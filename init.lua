@@ -1082,19 +1082,19 @@ require('lazy').setup({
   --   name = 'catppuccin',
   --   priority = 1000,
   --   opts = {
-  --     -- flavour = 'macchiato',
-  --     transparent_background = false,
-  --     integrations = {
-  --       gitsigns = true,
-  --       -- cmp = true,
-  --       nvimtree = true,
-  --       telescope = true,
-  --       -- notify = true,
-  --       mini = true,
-  --       treesitter = true,
-  --       -- neogit = true,
-  --     },
-  --     semantic_tokens = false,
+  --     flavour = 'mocha',
+  --     -- transparent_background = false,
+  --     -- integrations = {
+  --     --   gitsigns = true,
+  --     --   -- cmp = true,
+  --     --   nvimtree = true,
+  --     --   telescope = true,
+  --     --   -- notify = true,
+  --     --   mini = true,
+  --     --   treesitter = true,
+  --     --   -- neogit = true,
+  --     -- },
+  --     -- semantic_tokens = false,
   --   },
   --   config = function(_, opts)
   --     require('catppuccin').setup(opts)
@@ -1102,34 +1102,64 @@ require('lazy').setup({
   --   end,
   -- },
 
+  -- {
+  --   'cpea2506/one_monokai.nvim',
+  --   lazy = false,
+  --   priority = 1000, -- Make sure to load this before all the other start plugins.
+  --   config = function(_, opts)
+  --     require('one_monokai').setup(opts)
+  --     vim.cmd.colorscheme 'one_monokai'
+  --   end,
+  -- },
+
+  -- {
+  --   'sonph/onehalf',
+  --   lazy = false,
+  --   priority = 1000, -- Make sure to load this before all the other start plugins.
+  --   config = function(plugin)
+  --     vim.opt.rtp:append(plugin.dir .. '/vim')
+  --     vim.cmd [[ colorscheme onehalfdark ]]
+  --     -- or vim.cmd [[ colorscheme onehalflight ]] if you prefer light theme
+  --   end,
+  -- },
   {
-    'sonph/onehalf',
+    'BBaoVanC/onehalf',
     lazy = false,
     priority = 1000, -- Make sure to load this before all the other start plugins.
+    branch = 'bbaovanc',
     config = function(plugin)
       vim.opt.rtp:append(plugin.dir .. '/vim')
       vim.cmd [[ colorscheme onehalfdark ]]
       -- or vim.cmd [[ colorscheme onehalflight ]] if you prefer light theme
     end,
   },
-
-  -- { -- You can easily change to a different colorscheme.
-  --   -- Change the name of the colorscheme plugin below, and then
-  --   -- change the command in the config to whatever the name of that colorscheme is.ini
-  --   --
-  --   -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-  --   'folke/tokyonight.nvim',
+  -- {
+  --   'dwettstein/onehalf',
+  --   lazy = false,
   --   priority = 1000, -- Make sure to load this before all the other start plugins.
-  --   init = function()
-  --     -- Load the colorscheme here.
-  --     -- Like many other themes, this one has different styles, and you could load
-  --     -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-  --     vim.cmd.colorscheme 'tokyonight-night'
-  --
-  --     -- You can configure highlights by doing something like:
-  --     vim.cmd.hi 'Comment gui=none'
+  --   config = function(plugin)
+  --     vim.opt.rtp:append(plugin.dir .. '/vim')
+  --     vim.cmd [[ colorscheme onehalfdark ]]
+  --     -- or vim.cmd [[ colorscheme onehalflight ]] if you prefer light theme
   --   end,
   -- },
+  { -- You can easily change to a different colorscheme.
+    -- Change the name of the colorscheme plugin below, and then
+    -- change the command in the config to whatever the name of that colorscheme is.ini
+    --
+    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
+    'folke/tokyonight.nvim',
+    priority = 1000, -- Make sure to load this before all the other start plugins.
+    init = function()
+      -- Load the colorscheme here.
+      -- Like many other themes, this one has different styles, and you could load
+      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
+      vim.cmd.colorscheme 'tokyonight-night'
+
+      -- You can configure highlights by doing something like:
+      -- vim.cmd.hi 'Comment gui=none'
+    end,
+  },
 
   -- Highlight todo, notes, etc in comments
   { 'folke/todo-comments.nvim', event = 'VimEnter', dependencies = { 'nvim-lua/plenary.nvim' }, opts = { signs = false } },
