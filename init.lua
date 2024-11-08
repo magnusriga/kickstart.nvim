@@ -159,7 +159,8 @@ vim.opt.scrolloff = 10
 
 -- When jumping to quickfix items, e.g. after vimgrep, show buffer in new split window,
 -- unless it is already open, in which case open window is used.
-vim.opt.switchbuf:append { 'vsplit' }
+-- Do not open new splits, it is not efficient when rapidly going through list.
+-- vim.opt.switchbuf:append { 'vsplit' }
 
 -- Substitute all matches on each line, not just first, wihout having to specify /g.
 -- `%/replaceMe/newText/c` will consider all matches in each line.
@@ -234,6 +235,7 @@ vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
 -- Diagnostic keymaps
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
+vim.keymap.set('n', '<Leader>e', vim.diagnostic.open_float, { desc = 'Open diagnostic float, twice to focus' })
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
@@ -511,6 +513,12 @@ require('lazy').setup({
             -- Include files/folders in parent directories from: .gitignore, .ignore, etc.
             -- no_ignore_parent = true,
           },
+          lsp_document_symbols = {
+            symbols = {
+              'function',
+              'method',
+            },
+          },
         },
         extensions = {
           ['ui-select'] = {
@@ -690,6 +698,13 @@ require('lazy').setup({
           --  Symbols are things like variables, functions, types, etc.
           map('<leader>ds', require('telescope.builtin').lsp_document_symbols, '[D]ocument [S]ymbols')
 
+          map('<leader>o', function()
+            require('telescope.builtin').lsp_document_symbols(require('telescope.themes').get_dropdown {
+              winblend = 10,
+              previewer = false,
+            })
+          end, 'Symbols')
+
           -- Fuzzy find all the symbols in your current workspace.
           --  Similar to document symbols, except searches over your entire project.
           map('<leader>ws', require('telescope.builtin').lsp_dynamic_workspace_symbols, '[W]orkspace [S]ymbols')
@@ -784,6 +799,9 @@ require('lazy').setup({
           },
         },
 
+        docker_compose_language_service = {},
+        dockerls = {},
+
         -- TODO: Check if needed.
 
         -- marksman = {},
@@ -800,6 +818,8 @@ require('lazy').setup({
         -- },
 
         -- cssmodules_ls={},
+
+        taplo = {},
 
         lua_ls = {
           -- cmd = {...},
@@ -1130,36 +1150,38 @@ require('lazy').setup({
     config = function(plugin)
       vim.opt.rtp:append(plugin.dir .. '/vim')
       vim.cmd [[ colorscheme onehalfdark ]]
+      vim.cmd [[ highlight NormalFloat guibg='#16161e' guifg='#c0caf5' ]]
+      vim.cmd [[ highlight TreesitterContext guibg='#343a55' ]]
+      vim.cmd [[ highlight WhichKey guifg='#7dcfff' ]]
+      vim.cmd [[ highlight WhichKeyDesc guifg='#bb9af7' ]]
+      vim.cmd [[ highlight WhichKeyGroup guifg='#7aa2f7' ]]
+      vim.cmd [[ highlight WhichKeyNormal guibg='#16161e' ]]
+      vim.cmd [[ highlight WhichKeySeparator guifg='#565f89' ]]
+      vim.cmd [[ highlight WhichKeyValue guifg='#737aa2' ]]
+
+      -- WildMenu = {
+      --   bg = "#283457"
+      -- },
       -- or vim.cmd [[ colorscheme onehalflight ]] if you prefer light theme
     end,
   },
-  -- {
-  --   'dwettstein/onehalf',
-  --   lazy = false,
+  -- { -- You can easily change to a different colorscheme.
+  --   -- Change the name of the colorscheme plugin below, and then
+  --   -- change the command in the config to whatever the name of that colorscheme is.ini
+  --   --
+  --   -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
+  --   'folke/tokyonight.nvim',
   --   priority = 1000, -- Make sure to load this before all the other start plugins.
-  --   config = function(plugin)
-  --     vim.opt.rtp:append(plugin.dir .. '/vim')
-  --     vim.cmd [[ colorscheme onehalfdark ]]
-  --     -- or vim.cmd [[ colorscheme onehalflight ]] if you prefer light theme
+  --   init = function()
+  --     -- Load the colorscheme here.
+  --     -- Like many other themes, this one has different styles, and you could load
+  --     -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
+  --     vim.cmd.colorscheme 'tokyonight-night'
+  --
+  --     -- You can configure highlights by doing something like:
+  --     -- vim.cmd.hi 'Comment gui=none'
   --   end,
   -- },
-  { -- You can easily change to a different colorscheme.
-    -- Change the name of the colorscheme plugin below, and then
-    -- change the command in the config to whatever the name of that colorscheme is.ini
-    --
-    -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'folke/tokyonight.nvim',
-    priority = 1000, -- Make sure to load this before all the other start plugins.
-    init = function()
-      -- Load the colorscheme here.
-      -- Like many other themes, this one has different styles, and you could load
-      -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'tokyonight-night'
-
-      -- You can configure highlights by doing something like:
-      -- vim.cmd.hi 'Comment gui=none'
-    end,
-  },
 
   -- Highlight todo, notes, etc in comments
   { 'folke/todo-comments.nvim', event = 'VimEnter', dependencies = { 'nvim-lua/plenary.nvim' }, opts = { signs = false } },
@@ -1173,7 +1195,7 @@ require('lazy').setup({
       --  - va)  - [V]isually select [A]round [)]paren
       --  - yinq - [Y]ank [I]nside [N]ext [Q]uote
       --  - ci'  - [C]hange [I]nside [']quote
-      require('mini.ai').setup { n_lines = 500 }
+      -- require('mini.ai').setup { n_lines = 500 }
 
       -- Add/delete/replace surroundings (brackets, quotes, etc.)
       --
@@ -1203,12 +1225,16 @@ require('lazy').setup({
   },
 
   { -- Highlight, edit, and navigate code
-    'nvim-treesitter/nvim-treesitter',
+    'nvim-jreesitter/nvim-treesitter',
     build = ':TSUpdate',
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
+    dependencies = {
+      'nvim-treesitter/nvim-treesitter-textobjects',
+      'nvim-treesitter/nvim-treesitter-context',
+    },
     -- [[ Configure Treesitter ]] See `:help nvim-treesitter`
     opts = {
-      ensure_installed = { 'bash', 'c', 'diff', 'html', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
+      ensure_installed = { 'bash', 'c', 'diff', 'html', 'javascript', 'typescript', 'lua', 'luadoc', 'markdown', 'markdown_inline', 'query', 'vim', 'vimdoc' },
       -- Autoinstall languages that are not installed
       auto_install = true,
       highlight = {
@@ -1219,7 +1245,188 @@ require('lazy').setup({
         additional_vim_regex_highlighting = { 'ruby' },
       },
       indent = { enable = true, disable = { 'ruby' } },
+      incremental_selection = {
+        disable = {},
+        enable = true,
+        keymaps = {
+          init_selection = '<leader>css',
+          node_incremental = '{',
+          node_decremental = '}',
+          -- node_incremental = '<leader>csi',
+          -- node_decremental = '<leader>csd',
+          scope_incremental = '<leader>csc',
+        },
+        module_path = 'nvim-treesitter.incremental_selection',
+      },
+      textobjects = {
+        move = {
+          enable = true,
+          set_jumps = true, -- whether to set jumps in the jumplist
+          -- Overwrite built-in [a, which goes to next argument list file, often passed in
+          -- when vim is started.
+          goto_next_start = {
+            [']f'] = { query = '@function.outer', query_group = 'textobjects', desc = 'Next function start' },
+            [']a'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Next function argument start' },
+            [']o'] = { query = '@object.outer', query_group = 'textobjects', desc = 'Next object start' },
+            [']s'] = { query = '@local.scope', query_group = 'locals', desc = 'Next scope start' },
+            -- [']]'] = { query = '@class.outer', desc = 'Next class start' },
+
+            -- You can use regex matching (i.e. lua pattern) and/or pass a list in a "query" key to group multiple queries.
+            -- [']o'] = '@loop.*',
+            -- ["]o"] = { query = { "@loop.inner", "@loop.outer" } }
+
+            -- You can pass a query group to use query from `queries/<lang>/<query_group>.scm file in your runtime path, defaulting to 'textobjects'.
+            -- Below example nvim-treesitter's `folds.scm`. They also provide locals.scm, highlights.scm and indent.scm.
+            -- [']z'] = { query = '@fold', query_group = 'folds', desc = 'Next fold' },
+          },
+          goto_next_end = {
+            [']F'] = { query = '@function.outer', query_group = 'textobjects', desc = 'Next function end' },
+            [']A'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Next function argument end' },
+            [']S'] = { query = '@local.scope', query_group = 'locals', desc = 'Next scope end' },
+            [']O'] = { query = '@object.outer', query_group = 'textobjects', desc = 'Next object end' },
+            -- [']['] = '@class.outer',
+          },
+
+          goto_previous_start = {
+            ['[f'] = { query = '@function.outer', query_group = 'textobjects', desc = 'Previous function start' },
+            ['[a'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Previous function argument start' },
+            ['[o'] = { query = '@object.outer', query_group = 'textobjects', desc = 'Previous object start' },
+            ['[s'] = { query = '@local.scope', query_group = 'locals', desc = 'Previous scope start' },
+            -- ['[['] = '@class.outer',
+          },
+          goto_previous_end = {
+            ['[F'] = { query = '@function.outer', query_group = 'textobjects', desc = 'Previous function end' },
+            ['[A'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Previous function argument end' },
+            ['[S'] = { query = '@local.scope', query_group = 'locals', desc = 'Previous scope end' },
+            ['[O'] = { query = '@object.outer', query_group = 'textobjects', desc = 'Previous object end' },
+            -- ['[]'] = '@class.outer',
+          },
+
+          -- Below will go to either the start or the end, whichever is closer.
+          -- Use if you want more granular movements
+          -- Make it even more gradual by adding multiple queries and regex.
+          -- goto_next = {
+          --   [']d'] = '@conditional.outer',
+          -- },
+          --
+          -- goto_previous = {
+          --   ['[d'] = '@conditional.outer',
+          -- },
+        },
+        select = {
+          enable = true,
+
+          -- Automatically jump forward to textobj, similar to targets.vim
+          lookahead = true,
+
+          keymaps = {
+            -- You can use the capture groups defined in textobjects.scm
+            ['af'] = '@function.outer',
+            ['if'] = '@function.inner',
+
+            ['ac'] = '@class.outer',
+
+            ['aa'] = '@parameter.outer',
+            ['ia'] = '@parameter.inner',
+
+            -- You can optionally set descriptions to the mappings (used in the desc parameter of
+            -- nvim_buf_set_keymap) which plugins like which-key display
+            ['ic'] = { query = '@class.inner', desc = 'Select inner part of a class region' },
+            -- You can also use captures from other query groups like `locals.scm`
+            ['as'] = { query = '@local.scope', query_group = 'locals', desc = 'Select language scope' },
+          },
+          -- You can choose the select mode (default is charwise 'v')
+          --
+          -- Can also be a function which gets passed a table with the keys
+          -- * query_string: eg '@function.inner'
+          -- * method: eg 'v' or 'o'
+          -- and should return the mode ('v', 'V', or '<c-v>') or a table
+          -- mapping query_strings to modes.
+          selection_modes = {
+            ['@parameter.outer'] = 'v', -- charwise
+            ['@function.outer'] = 'V', -- linewise
+            ['@class.outer'] = '<c-v>', -- blockwise
+          },
+          -- If you set this to `true` (default is `false`) then any textobject is
+          -- extended to include preceding or succeeding whitespace. Succeeding
+          -- whitespace has priority in order to act similarly to eg the built-in
+          -- `ap`.
+          --
+          -- Can also be a function which gets passed a table with the keys
+          -- * query_string: eg '@function.inner'
+          -- * selection_mode: eg 'v'
+          -- and should return true or false
+          -- include_surrounding_whitespace = true,
+        },
+        swap = {
+          enable = true,
+          swap_next = {
+            ['<leader>a'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Swap next parameter' },
+          },
+          swap_previous = {
+            ['<leader>A'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Swap previous parameter' },
+          },
+        },
+        lsp_interop = {
+          enable = true,
+          border = 'none',
+          floating_preview_opts = {},
+          peek_definition_code = {
+            ['<leader>df'] = '@function.outer',
+            ['<leader>dF'] = '@class.outer',
+          },
+        },
+      },
+      -- context = {
+      --   enable = false, -- Enable this plugin (Can be enabled/disabled later via commands)
+      --   multiwindow = false, -- Enable multiwindow support.
+      --   max_lines = 0, -- How many lines the window should span. Values <= 0 mean no limit.
+      --   min_window_height = 0, -- Minimum editor window height to enable context. Values <= 0 mean no limit.
+      --   line_numbers = true,
+      --   multiline_threshold = 20, -- Maximum number of lines to show for a single context
+      --   trim_scope = 'outer', -- Which context lines to discard if `max_lines` is exceeded. Choices: 'inner', 'outer'
+      --   mode = 'cursor', -- Line used to calculate context. Choices: 'cursor', 'topline'
+      --   -- Separator between context and content. Should be a single character string, like '-'.
+      --   -- When separator is set, the context will only show up when there are at least 2 lines above cursorline.
+      --   separator = nil,
+      --   zindex = 20, -- The Z-index of the context window
+      --   on_attach = nil, -- (fun(buf: integer): boolean) return false to disable attaching
+      -- },
     },
+    config = function(_, opts)
+      require('nvim-treesitter.configs').setup(opts)
+      vim.treesitter.language.register('bash', 'zsh') -- the someft filetype will use the python parser and queries.
+      require('treesitter-context').setup {
+        enable = true,
+        mode = 'cursor',
+        multiline_threshold = 1,
+        -- max_lines = 5,
+        -- trim_scope = 'outer',
+      }
+
+      -- Jump to context (upwards only)
+      -- Use [z instead.
+      -- vim.keymap.set('n', '[c', function()
+      --   require('treesitter-context').go_to_context(vim.v.count1)
+      -- end, { silent = true })
+
+      -- Repeat movement with ; and ,
+      local ts_repeat_move = require 'nvim-treesitter.textobjects.repeatable_move'
+      -- vim way: ; goes to the direction you were moving.
+      vim.keymap.set({ 'n', 'x', 'o' }, ';', ts_repeat_move.repeat_last_move)
+      vim.keymap.set({ 'n', 'x', 'o' }, ',', ts_repeat_move.repeat_last_move_opposite)
+      -- Make builtin f, F, t, T use Treesitter, so we can keep its repeat behavior (since we
+      -- overwrite it above).
+      vim.keymap.set({ 'n', 'x', 'o' }, 'f', ts_repeat_move.builtin_f_expr, { expr = true })
+      vim.keymap.set({ 'n', 'x', 'o' }, 'F', ts_repeat_move.builtin_F_expr, { expr = true })
+      vim.keymap.set({ 'n', 'x', 'o' }, 't', ts_repeat_move.builtin_t_expr, { expr = true })
+      vim.keymap.set({ 'n', 'x', 'o' }, 'T', ts_repeat_move.builtin_T_expr, { expr = true })
+    end,
+    -- config = function(_, opt)
+    --   require('nvim-treesitter.configs').setup(opt)
+    --   -- require('treesitter-context')
+    -- end,
+
     -- There are additional nvim-treesitter modules that you can use to interact
     -- with nvim-treesitter. You should go explore a few and see what interests you:
     --
@@ -1227,6 +1434,17 @@ require('lazy').setup({
     --    - Show your current context: https://github.com/nvim-treesitter/nvim-treesitter-context
     --    - Treesitter + textobjects: https://github.com/nvim-treesitter/nvim-treesitter-textobjects
   },
+
+  -- {
+  --   'OlegGulevskyy/better-ts-errors.nvim',
+  --   dependencies = { 'MunifTanjim/nui.nvim' },
+  --   opts = {
+  --     keymaps = {
+  --       toggle = '<leader>dd', -- default '<leader>dd'
+  --       go_to_definition = '<leader>dx', -- default '<leader>dx'
+  --     },
+  --   },
+  -- },
 
   {
     'kdheepak/lazygit.nvim',
