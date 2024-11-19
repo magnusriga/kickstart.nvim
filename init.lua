@@ -217,9 +217,18 @@ vim.opt.diffopt:append { 'vertical' }
 --    on first list line
 vim.opt.textwidth = 90
 vim.opt.formatoptions = 'cqjroln'
+
 -- Use literal string to avoid having to escape all parts of string, and escape special
 -- characters in formatlistpat.
 vim.opt.formatlistpat = [[^\s*\(\d\|\*\|-\)\+[\]:.)}\t ]\s*]]
+
+-- views can only be fully collapsed with the global statusline
+vim.opt.laststatus = 3
+
+-- Increase ttimoutlen from 50ms to 100ms.
+-- vim.opt.ttimeoutlen = 100
+-- Winbar set automatically by plugins.
+-- viv.opt.winbar = true
 
 -- Make Vim auto-write buffer to file, whenever we are abandoning buffer.
 -- With the less intrusive opt.autowrite, edit, quit, etc. will not cause auto-write.
@@ -233,16 +242,17 @@ vim.opt.formatlistpat = [[^\s*\(\d\|\*\|-\)\+[\]:.)}\t ]\s*]]
 --  See `:help hlsearch`
 vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 
--- Diagnostic keymaps
+-- Diagnostic keymaps and settings.
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 vim.keymap.set('n', '<Leader>e', vim.diagnostic.open_float, { desc = 'Open diagnostic float, twice to focus' })
+vim.diagnostic.config { virtual_text = false }
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
 -- is not what someone will guess without a bit more experience.
 --
--- NOTE: This won't work in all terminal emulators/tmux/etc. Try your own mapping
--- or just use <C-\><C-n> to exit terminal mode
+-- NOTE: This won't work in all terminal emulators/tmux/etc.
+-- Try your own mapping or just use <C-\><C-n> to exit terminal mode.
 vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
 
 -- TIP: Disable arrow keys in normal mode
@@ -286,6 +296,21 @@ vim.api.nvim_create_autocmd('TextYankPost', {
   end,
 })
 
+-- Set custom filetypes for specific files, by extension, filename, or pattern.
+vim.filetype.add {
+  filename = {
+    ['.shrc'] = 'sh',
+    -- [ '.zshrc' ] = 'zsh'
+  },
+}
+
+-- Never request typescript-language-server for formatting
+-- vim.lsp.buf.format {
+--   filter = function(client)
+--     return client.name ~= 'tsserver'
+--   end,
+-- }
+
 -- Add fzf to runtimepath.
 -- When nvim starts, it automatically runs files in certain folders within paths in the
 -- runtimepath list. See `:h startup`.
@@ -295,6 +320,17 @@ vim.api.nvim_create_autocmd('TextYankPost', {
 -- which runs the fzf shell command inside vim, I think? the is added to  f[older is added to runtimepath, the command `:ru[ntime][!] [where] {file}`,
 -- i.e. ru init.lua, will call ex-commands or .lua files inside the fzf folder.
 vim.opt.rtp:append '/home/linuxbrew/.linuxbrew/opt/fzf'
+
+-- vim.lsp.set_log_level 'debug'
+
+-- local eslint = {
+--   lintCommand = 'eslint_d -f unix --stdin --stdin-filename ${INPUT}',
+--   lintStdin = true,
+--   lintFormats = { '%f:%l:%c: %m' },
+--   lintIgnoreExitCode = true,
+--   -- formatCommand = 'eslint_d --fix-to-stdout --stdin --stdin-filename=${INPUT}',
+--   -- formatStdin = true,
+-- }
 
 -- [[ Install `lazy.nvim` plugin manager ]]
 --    See `:help lazy.nvim.txt` or https://github.com/folke/lazy.nvim for more info
@@ -472,12 +508,24 @@ require('lazy').setup({
       -- Telescope picker. This is really useful to discover what Telescope can
       -- do as well as how to actually do it!
 
+      -- Custom action inside telescope, to open trouble list.
+      local actions = require 'telescope.actions'
+      local open_with_trouble = require('trouble.sources.telescope').open
+      -- Use this to add more results without clearing the trouble list
+      local add_to_trouble = require('trouble.sources.telescope').add
+
       -- [[ Configure Telescope ]]
       -- See `:help telescope` and `:help telescope.setup()`
       require('telescope').setup {
         -- You can put your default mappings / updates / etc. in here
         --  All the info you're looking for is in `:help telescope.setup()`
         defaults = {
+          mappings = {
+            -- Map <c-t> inside a Telescope prompt to open the trouble list.
+            i = { ['<c-t>'] = open_with_trouble },
+            n = { ['<c-t>'] = open_with_trouble },
+          },
+
           -- Decide arguments passed to rg, used under hood by Telescope.
           -- See defaults: :h telescope.setup() > vimgrep_arguments.
           vimgrep_arguments = {
@@ -489,10 +537,15 @@ require('lazy').setup({
             '--column',
             '--smart-case',
             '--hidden', -- Include hidden files, i.e. dotfiles.
-
-            -- Include files: .gitignore, .ignore, etc.
-            -- Uncomment to search in node_modlues, etc.
-            -- '--no-ignore'
+            '--no-ignore', -- Include files/folders from: .gitignore, .ignore, etc.
+            -- Exclude various files and folders from search.
+            '--glob=!.git/*',
+            '--glob=!.cache/*',
+            '--glob=!.history/*',
+            '--glob=!.rustup/*',
+            '--glob=!.cargo/*',
+            -- '--glob=!.local/share/zsh/*',
+            '--glob=!node_modules/*',
           },
         },
         --   mappings = {
@@ -506,12 +559,9 @@ require('lazy').setup({
             -- Dotfiles can be included with --hidden.
             -- .gitignore files can be included with --no-ignore.
             hidden = true, -- Include hidden files, i.e. dotfiles.
-
-            -- Include files/folders from: .gitignore, .ignore, etc.
-            -- Uncomment to search node_modules files.
-            -- no_ignore = true,
-            -- Include files/folders in parent directories from: .gitignore, .ignore, etc.
-            -- no_ignore_parent = true,
+            no_ignore = true, -- Include files/folders from: .gitignore, .ignore, etc.
+            exclude = { 'node_modules', '.git', '.cache', '.history', '.rustup', '.cargo' },
+            -- glob = { '!.git/*', '!.cache/*', '!.history/*', '!.rust*/*', '!.node_modules/*' },
           },
           lsp_document_symbols = {
             symbols = {
@@ -566,6 +616,19 @@ require('lazy').setup({
       vim.keymap.set('n', '<leader>sn', function()
         builtin.find_files { cwd = vim.fn.stdpath 'config' }
       end, { desc = '[S]earch [N]eovim files' })
+
+      -- Shortcuts for searching TODOs.
+      vim.keymap.set('n', '<leader>stt', function()
+        vim.cmd 'TodoTelescope keywords=TODO,FIX,BUG'
+      end, { desc = '[S]earch [T]odos, [F]ixes, and [B]ugs' })
+
+      vim.keymap.set('n', '<leader>stf', function()
+        vim.cmd 'TodoTelescope keywords=FIX,BUG'
+      end, { desc = '[S]earch [F]ixes and [B]ugs' })
+
+      vim.keymap.set('n', '<leader>stn', function()
+        vim.cmd 'TodoTelescope keywords=NOTE'
+      end, { desc = '[S]earch [N]otes' })
     end,
   },
 
@@ -588,21 +651,16 @@ require('lazy').setup({
   -- TypeScript LSP.
   {
     'pmizio/typescript-tools.nvim',
-    dependencies = { 'nvim-lua/plenary.nvim', 'neovim/nvim-lspconfig', 'hrsh7th/cmp-nvim-lsp' },
-    -- opts = {
-    --   -- opt table is passed into require('typescript-tools').setup(opt), which in turn is passed into require(lspconfig).setup(opt).
-    --   -- Thus, we can add server capabilities here.
-    --   -- capabilities = vim.tbl_deep_extend('force', vim.lsp.protocol.make_client_capabilities(), require('cmp_nvim_lsp').default_capabilities()),
-    -- },
+    dependencies = { 'nvim-lua/plenary.nvim', 'neovim/nvim-lspconfig' },
+    opts = {},
     config = function()
       -- opt table is passed into require('typescript-tools').setup(opt), but here we call it directly.
       -- Parameters passed to setup funciton are also passed to standard nvim-lspconfig
       -- server setup.
-      local capabilities = vim.lsp.protocol.make_client_capabilities()
-      capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
+      -- local capabilities = vim.lsp.protocol.make_client_capabilities()
+      -- capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
       require('typescript-tools').setup {
-        capabilities = capabilities,
-
+        -- capabilities = capabilities,
         on_attach = function(client)
           client.server_capabilities.documentFormattingProvider = false
           client.server_capabilities.documentRangeFormattingProvider = false
@@ -613,6 +671,58 @@ require('lazy').setup({
             enable = true,
             filetypes = { 'javascriptreact', 'typescriptreact' },
           },
+        },
+      }
+    end,
+  },
+  -- {
+  --   'pmizio/typescript-tools.nvim',
+  --   dependencies = { 'nvim-lua/plenary.nvim', 'neovim/nvim-lspconfig', 'hrsh7th/cmp-nvim-lsp' },
+  --   -- opts = {
+  --   --   -- opt table is passed into require('typescript-tools').setup(opt), which in turn is passed into require(lspconfig).setup(opt).
+  --   --   -- Thus, we can add server capabilities here.
+  --   --   -- capabilities = vim.tbl_deep_extend('force', vim.lsp.protocol.make_client_capabilities(), require('cmp_nvim_lsp').default_capabilities()),
+  --   -- },
+  --   config = function()
+  --     -- opt table is passed into require('typescript-tools').setup(opt), but here we call it directly.
+  --     -- Parameters passed to setup funciton are also passed to standard nvim-lspconfig
+  --     -- server setup.
+  --     local capabilities = vim.lsp.protocol.make_client_capabilities()
+  --     capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
+  --     require('typescript-tools').setup {
+  --       capabilities = capabilities,
+  --
+  --       on_attach = function(client)
+  --         client.server_capabilities.documentFormattingProvider = false
+  --         client.server_capabilities.documentRangeFormattingProvider = false
+  --       end,
+  --
+  --       settings = {
+  --         jsx_close_tag = {
+  --           enable = true,
+  --           filetypes = { 'javascriptreact', 'typescriptreact' },
+  --         },
+  --       },
+  --     }
+  --   end,
+  -- },
+
+  {
+    'nvimtools/none-ls.nvim',
+    dependencies = {
+      'nvimtools/none-ls-extras.nvim',
+      'nvim-lua/plenary.nvim',
+    },
+    opts = {},
+    config = function(_, opts)
+      local null_ls = require 'null-ls'
+      null_ls.setup {
+        -- debug = true,
+        sources = {
+          require 'none-ls.diagnostics.eslint_d',
+          require 'none-ls.code_actions.eslint_d',
+          null_ls.builtins.formatting.prettierd,
+          -- require 'none-ls.formatting.prettier_d',
         },
       }
     end,
@@ -784,41 +894,104 @@ require('lazy').setup({
         -- rust_analyzer = {},
         -- ... etc. See `:help lspconfig-all` for a list of all the pre-configured LSPs
         --
-        -- Some languages (like typescript) have entire language plugins that can be useful:
-        --    https://github.com/pmizio/typescript-tools.nvim
-        --
-        -- But for many setups, the LSP (`ts_ls`) will work just fine
-        -- ts_ls = {},
 
-        tailwindcss = {},
-
-        eslint = {
+        bashls = {
+          filetypes = { 'sh', 'bash', 'zsh' },
           settings = {
-            packageManager = 'pnpm',
-            format = false,
+            -- Uses fnmatch, which uses shell wildcard pattern: `man 7 glob`, `man fnmatch`.
+            -- @(pattern-list): pattern matches if exactly one occurrence of any of patterns in pattern-list match input string.
+            -- Instead of matching here, set specific filetypes to specific files, by filename, directly in vim.filetypes.add.
+            -- globPattern = '**/*@(.sh|.inc|.bash|.zsh|.command|.shrc|.profile|.zshrc|.zprofile|.bashrc|.bash_profile|.bash_aliases|.bash_history|.bash_logout|.bash_login)',
           },
         },
 
-        docker_compose_language_service = {},
-        dockerls = {},
+        -- Some languages (like typescript) have entire language plugins that can be useful:
+        -- https://github.com/pmizio/typescript-tools.nvim
+        -- But for many setups, the LSP (`ts_ls`) will work just fine.
+        -- ts_ls = {},
+
+        tailwindcss = {
+          --   -- flags = {
+          --   --   debounce_text_changes = 1000,
+          --   -- },
+        },
+
+        -- efm = {
+        --
+        --   -- on_attach = function(client)
+        --   --   client.server_capabilities.documentFormattingProvider = false
+        --   --   client.server_capabilities.documentRangeFormattingProvider = false
+        --   -- end,
+        --   -- on_attach = function(client)
+        --   --   client.resolved_capabilities.document_formatting = true
+        --   --   client.resolved_capabilities.goto_definition = false
+        --   -- end,
+        --   -- root_dir = function()
+        --   --   if not eslint_config_exists() then
+        --   --     return nil
+        --   --   end
+        --   --   return vim.fn.getcwd()
+        --   -- end,
+        --   init_options = {
+        --     documentFormatting = false,
+        --     hover = true,
+        --     documentSymbol = true,
+        --     codeAction = true,
+        --     completion = true,
+        --   },
+        --   settings = {
+        --     rootMarkers = { '.git/' },
+        --     languages = {
+        --       javascript = { eslint },
+        --       javascriptreact = { eslint },
+        --       ['javascript.jsx'] = { eslint },
+        --       typescript = { eslint },
+        --       ['typescript.tsx'] = { eslint },
+        --       typescriptreact = { eslint },
+        --     },
+        --   },
+        --   filetypes = {
+        --     'javascript',
+        --     'javascriptreact',
+        --     'javascript.jsx',
+        --     'typescript',
+        --     'typescript.tsx',
+        --     'typescriptreact',
+        --   },
+        -- },
+
+        -- eslint = {
+        --   settings = {
+        --     packageManager = 'pnpm',
+        --     format = false,
+        --   },
+        --   -- flags = {
+        --   --   allow_incremental_sync = false,
+        --   --   debounce_text_changes = 1000,
+        --   -- },
+        -- },
+
+        -- For: docker-compose.yaml.
+        -- docker_compose_language_service = {},
+
+        -- For: Dockerfile.
+        -- dockerls = {},
 
         -- TODO: Check if needed.
 
         -- marksman = {},
-        -- css_variables = {},
-        -- somesass_ls={}.
-        -- html = {},
-        -- cssls = {},
 
-        -- cssls = {
-        --   filetypes={'css'}
-        -- },
-        -- somesass_ls={
-        --   filtetypes={'scss', 'sass'}
-        -- },
+        html = {},
+        cssls = {
+          filetypes = { 'css' },
+        },
+        css_variables = {},
+        cssmodules_ls = {},
+        somesass_ls = {
+          filtetypes = { 'scss', 'sass' },
+        },
 
-        -- cssmodules_ls={},
-
+        -- For: .toml.
         taplo = {},
 
         lua_ls = {
@@ -853,6 +1026,9 @@ require('lazy').setup({
         'stylua', -- Used to format Lua code.
         'prettierd', -- Used to format JavaScript and TypeScript code.
         'prettier', -- Backup, in case prettierd stops working.
+        'eslint_d',
+        'shfmt',
+        'shellcheck',
       })
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -905,33 +1081,35 @@ require('lazy').setup({
       end,
       formatters_by_ft = {
         -- Conform can also run multiple formatters sequentially.
-
         -- You can use 'stop_after_first' to run the first available formatter from the list
-        javascript = { 'prettierd', 'prettier', stop_after_first = true },
-        typescript = { 'prettierd', 'prettier', stop_after_first = true },
-        javascriptreact = { 'prettierd', 'prettier', stop_after_first = true },
-        typescriptreact = { 'prettierd', 'prettier', stop_after_first = true },
-        css = { 'prettierd', 'prettier', stop_after_first = true },
-        html = { 'prettierd', 'prettier', stop_after_first = true },
-        json = { 'prettierd', 'prettier', stop_after_first = true },
-        yaml = { 'prettierd', 'prettier', stop_after_first = true },
-        markdown = { 'prettierd', 'prettier', stop_after_first = true },
-        graphql = { 'prettierd', 'prettier', stop_after_first = true },
+        -- javascript = { 'prettierd', 'prettier', stop_after_first = true },
+        -- typescript = { 'prettierd', 'prettier', stop_after_first = true },
+        -- javascriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+        -- typescriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+        -- css = { 'prettierd', 'prettier', stop_after_first = true },
+        -- html = { 'prettierd', 'prettier', stop_after_first = true },
+        -- json = { 'prettierd', 'prettier', stop_after_first = true },
+        -- yaml = { 'prettierd', 'prettier', stop_after_first = true },
+        -- markdown = { 'prettierd', 'prettier', stop_after_first = true },
+        -- graphql = { 'prettierd', 'prettier', stop_after_first = true },
         lua = { 'stylua' },
+        bash = { 'shfmt' },
+        zsh = { 'shfmt' },
+        sh = { 'shfmt' },
         -- python = { 'isort', 'black' },
       },
-      formatters = {
-        prettierd = function(bufnr)
-          return {
-            command = 'prettierd',
-            args = { vim.api.nvim_buf_get_name(bufnr) },
-            stdin = true,
-            env = {
-              string.format('PRETTIERD_DEFAULT_CONFIG=%s', vim.fn.expand '~/nfront/.prettierrc.js'),
-            },
-          }
-        end,
-      },
+      -- formatters = {
+      --   prettierd = function(bufnr)
+      --     return {
+      --       command = 'prettierd',
+      --       args = { vim.api.nvim_buf_get_name(bufnr) },
+      --       stdin = true,
+      --       env = {
+      --         string.format('PRETTIERD_DEFAULT_CONFIG=%s', vim.fn.expand '~/nfront/.prettierrc.js'),
+      --       },
+      --     }
+      --   end,
+      -- },
     },
   },
 
@@ -970,13 +1148,13 @@ require('lazy').setup({
       --  into multiple repos for maintenance purposes.
       'hrsh7th/cmp-nvim-lsp',
       'hrsh7th/cmp-path',
-      -- 'onsails/lspkind.nvim',
+      'onsails/lspkind.nvim',
     },
     config = function()
       -- See `:help cmp`
       local cmp = require 'cmp'
       local luasnip = require 'luasnip'
-      -- local lspkind = require 'lspkind'
+      local lspkind = require 'lspkind'
 
       luasnip.config.setup {}
 
@@ -1001,7 +1179,29 @@ require('lazy').setup({
         --     },
         --   },
         -- },
+        --
 
+        formatting = {
+          format = lspkind.cmp_format {
+            mode = 'symbol', -- show only symbol annotations
+            maxwidth = {
+              -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
+              -- can also be a function to dynamically calculate max width such as
+              -- menu = function() return math.floor(0.45 * vim.o.columns) end,
+              menu = 50, -- leading text (labelDetails)
+              abbr = 50, -- actual suggestion item
+            },
+            ellipsis_char = '...', -- when popup menu exceed maxwidth, the truncated part would show ellipsis_char instead (must define maxwidth first)
+            show_labelDetails = true, -- show labelDetails in menu. Disabled by default
+
+            -- The function below will be called before any actual modifications from lspkind
+            -- so that you can provide more controls on popup customization. (See [#30](https://github.com/onsails/lspkind-nvim/pull/30))
+            -- before = function (entry, vim_item)
+            --   ...
+            --   return vim_item
+            -- end
+          },
+        },
         -- For an understanding of why these mappings were
         -- chosen, you will need to read `:help ins-completion`
 
@@ -1069,6 +1269,26 @@ require('lazy').setup({
   },
 
   -- {
+  --   'windwp/nvim-ts-autotag',
+  --   opts = {
+  --     opts = {
+  --       -- Defaults
+  --       enable_close = true, -- Auto close tags
+  --       enable_rename = true, -- Auto rename pairs of tags
+  --       enable_close_on_slash = false, -- Auto close on trailing </
+  --     },
+  --     -- Also override individual filetype configs, these take priority.
+  --     -- Empty by default, useful if one of the "opts" global settings
+  --     -- doesn't work well in a specific filetype
+  --     -- per_filetype = {
+  --     --   ['html'] = {
+  --     --     enable_close = false,
+  --     --   },
+  --     -- },
+  --   },
+  -- },
+
+  -- {
   --   'maxmx03/solarized.nvim',
   --   lazy = false,
   --   priority = 1000,
@@ -1079,6 +1299,46 @@ require('lazy').setup({
   --     vim.o.background = 'dark'
   --     require('solarized').setup(opts)
   --     vim.cmd.colorscheme 'solarized'
+  --   end,
+  -- },
+
+  {
+    'olimorris/onedarkpro.nvim',
+    lazy = false,
+    priority = 1000, -- Ensure it loads first
+    opts = {
+      colors = {
+        onedark = { bg = '#16161D' }, -- yellow
+        -- onedark = { bg = '#1F1F28' }, -- yellow
+      },
+    },
+    config = function(_, opts)
+      require('onedarkpro').setup(opts)
+      vim.cmd.colorscheme 'onedark'
+      -- Other custom highlight settings.
+      -- vim.cmd [[ highlight DiagnosticUnderlineError cterm=undercurl gui=undercurl guifg=NONE guisp=#ef596f guibg=#181818 ]]
+      -- vim.cmd [[ highlight DiagnosticUnderlineWarn cterm=undercurl gui=undercurl guifg=NONE guisp=yellow guibg=#3e3e3e ]]
+      vim.cmd [[ highlight DiagnosticUnderlineError cterm=undercurl gui=undercurl guifg=NONE guisp=red guibg=#3e3e3e ]]
+      vim.cmd [[ highlight DiagnosticUnderlineWarn cterm=undercurl gui=undercurl guifg=NONE guisp=yellow ]]
+      vim.cmd [[ highlight DiagnosticUnderlineInfo cterm=undercurl gui=undercurl guifg=NONE guisp=LightBlue ]]
+      vim.cmd [[ highlight DiagnosticUnderlineHint cterm=undercurl gui=undercurl guifg=NONE guisp=#2bbac5 ]]
+    end,
+  },
+
+  -- {
+  --   'rebelot/kanagawa.nvim',
+  --   lazy = false,
+  --   priority = 1000, -- Ensure it loads first
+  --   opts = {},
+  --   config = function(_, opts)
+  --     require('kanagawa').setup(opts)
+  --     vim.cmd.colorscheme 'kanagawa'
+  --     -- Other custom highlight settings.
+  --     -- vim.cmd [[ highlight DiagnosticUnderlineError cterm=undercurl gui=undercurl guifg=NONE guisp=#ef596f guibg=#181818 ]]
+  --     vim.cmd [[ highlight DiagnosticUnderlineError cterm=undercurl gui=undercurl guifg=NONE guisp=red guibg=#181818 ]]
+  --     vim.cmd [[ highlight DiagnosticUnderlineWarn cterm=undercurl gui=undercurl guifg=NONE guisp=yellow guibg=#181818 ]]
+  --     vim.cmd [[ highlight DiagnosticUnderlineInfo cterm=undercurl gui=undercurl guifg=NONE guisp=LightBlue ]]
+  --     vim.cmd [[ highlight DiagnosticUnderlineHint cterm=undercurl gui=undercurl guifg=NONE guisp=#2bbac5 ]]
   --   end,
   -- },
 
@@ -1142,29 +1402,31 @@ require('lazy').setup({
   --     -- or vim.cmd [[ colorscheme onehalflight ]] if you prefer light theme
   --   end,
   -- },
-  {
-    'BBaoVanC/onehalf',
-    lazy = false,
-    priority = 1000, -- Make sure to load this before all the other start plugins.
-    branch = 'bbaovanc',
-    config = function(plugin)
-      vim.opt.rtp:append(plugin.dir .. '/vim')
-      vim.cmd [[ colorscheme onehalfdark ]]
-      vim.cmd [[ highlight NormalFloat guibg='#16161e' guifg='#c0caf5' ]]
-      vim.cmd [[ highlight TreesitterContext guibg='#343a55' ]]
-      vim.cmd [[ highlight WhichKey guifg='#7dcfff' ]]
-      vim.cmd [[ highlight WhichKeyDesc guifg='#bb9af7' ]]
-      vim.cmd [[ highlight WhichKeyGroup guifg='#7aa2f7' ]]
-      vim.cmd [[ highlight WhichKeyNormal guibg='#16161e' ]]
-      vim.cmd [[ highlight WhichKeySeparator guifg='#565f89' ]]
-      vim.cmd [[ highlight WhichKeyValue guifg='#737aa2' ]]
 
-      -- WildMenu = {
-      --   bg = "#283457"
-      -- },
-      -- or vim.cmd [[ colorscheme onehalflight ]] if you prefer light theme
-    end,
-  },
+  -- {
+  --   'BBaoVanC/onehalf',
+  --   lazy = false,
+  --   priority = 1000, -- Make sure to load this before all the other start plugins.
+  --   branch = 'bbaovanc',
+  --   config = function(plugin)
+  --     vim.opt.rtp:append(plugin.dir .. '/vim')
+  --     vim.cmd [[ colorscheme onehalfdark ]]
+  --     vim.cmd [[ highlight NormalFloat guibg='#16161e' guifg='#c0caf5' ]]
+  --     vim.cmd [[ highlight TreesitterContext guibg='#343a55' ]]
+  --     vim.cmd [[ highlight WhichKey guifg='#7dcfff' ]]
+  --     vim.cmd [[ highlight WhichKeyDesc guifg='#bb9af7' ]]
+  --     vim.cmd [[ highlight WhichKeyGroup guifg='#7aa2f7' ]]
+  --     vim.cmd [[ highlight WhichKeyNormal guibg='#16161e' ]]
+  --     vim.cmd [[ highlight WhichKeySeparator guifg='#565f89' ]]
+  --     vim.cmd [[ highlight WhichKeyValue guifg='#737aa2' ]]
+  --
+  --     -- WildMenu = {
+  --     --   bg = "#283457"
+  --     -- },
+  --     -- or vim.cmd [[ colorscheme onehalflight ]] if you prefer light theme
+  --   end,
+  -- },
+
   -- { -- You can easily change to a different colorscheme.
   --   -- Change the name of the colorscheme plugin below, and then
   --   -- change the command in the config to whatever the name of that colorscheme is.ini
@@ -1184,7 +1446,325 @@ require('lazy').setup({
   -- },
 
   -- Highlight todo, notes, etc in comments
-  { 'folke/todo-comments.nvim', event = 'VimEnter', dependencies = { 'nvim-lua/plenary.nvim' }, opts = { signs = false } },
+  {
+    'folke/todo-comments.nvim',
+    event = 'VimEnter',
+    dependencies = { 'nvim-lua/plenary.nvim' },
+    opts = {
+      -- keywords recognized as todo comments
+      keywords = {
+        FIX = {
+          icon = ' ', -- icon used for the sign, and in search results
+          color = 'error', -- can be a hex color, or a named color (see below)
+          alt = { 'FIXME', 'BUG', 'FIXIT', 'ISSUE' }, -- a set of other keywords that all map to this FIX keywords
+          -- signs = false, -- configure signs for some keywords individually
+        },
+        TODO = { icon = ' ', color = 'info' },
+        HACK = { icon = ' ', color = 'warning' },
+        WARN = { icon = ' ', color = 'warning', alt = { 'WARNING', 'XXX' } },
+        PERF = { icon = ' ', alt = { 'OPTIM', 'PERFORMANCE', 'OPTIMIZE' } },
+        NOTE = { icon = '󰙏 ', color = 'hint', alt = { 'INFO' } },
+        TEST = { icon = '⏲ ', color = 'test', alt = { 'TESTING', 'PASSED', 'FAILED' } },
+      },
+
+      gui_style = {
+        fg = 'BOLD', -- The gui style to use for the fg highlight group.
+        bg = 'BOLD', -- The gui style to use for the bg highlight group.
+      },
+      -- list of named colors where we try to extract the guifg from the
+      -- list of highlight groups or use the hex color if hl not found as a fallback
+      colors = {
+        error = { '#e06c75' },
+        -- warning = { 'DiagnosticWarn', 'WarningMsg', '#FBBF24' },
+        -- info = { 'Structure', 'Question', 'Special', '#2563EB' },
+        info = { '#61afef', 'Special', '#2563EB' },
+        hint = { '#98c379', 'Title', '#98c379' },
+        -- default = { 'Identifier', '#7C3AED' },
+        -- test = { 'Identifier', '#FF00FF' },
+      },
+    },
+  },
+
+  {
+    'folke/twilight.nvim',
+    opts = {
+      -- your configuration comes here
+      -- or leave it empty to use the default settings
+      -- refer to the configuration section below
+    },
+  },
+
+  {
+    'folke/zen-mode.nvim',
+    opts = {
+      -- your configuration comes here
+      -- or leave it empty to use the default settings
+      -- refer to the configuration section below
+      -- plugins = {
+      --   wezterm = {
+      --     enabled = true,
+      --     -- can be either an absolute font size or the number of incremental steps
+      --     font = '+4', -- (10% increase per step)
+      --   },
+      -- },
+    },
+  },
+
+  -- Pretty list for diagnostics, references, telescope results, quickfix, location list.
+  {
+    'folke/trouble.nvim',
+    opts = {}, -- for default options, refer to the configuration section for custom setup.
+    cmd = 'Trouble',
+    keys = {
+      {
+        '<leader>xx',
+        '<cmd>Trouble diagnostics toggle<cr>',
+        desc = 'Diagnostics (Trouble)',
+      },
+      {
+        '<leader>xX',
+        '<cmd>Trouble diagnostics toggle filter.buf=0<cr>',
+        desc = 'Buffer Diagnostics (Trouble)',
+      },
+      {
+        '<leader>cs',
+        '<cmd>Trouble symbols toggle focus=false<cr>',
+        desc = 'Symbols (Trouble)',
+      },
+      {
+        '<leader>cl',
+        '<cmd>Trouble lsp toggle focus=false win.position=right<cr>',
+        desc = 'LSP Definitions / references / ... (Trouble)',
+      },
+      {
+        '<leader>xL',
+        '<cmd>Trouble loclist toggle<cr>',
+        desc = 'Location List (Trouble)',
+      },
+      {
+        '<leader>xQ',
+        '<cmd>Trouble qflist toggle<cr>',
+        desc = 'Quickfix List (Trouble)',
+      },
+    },
+  },
+
+  {
+    'nvim-lualine/lualine.nvim',
+    dependencies = { 'nvim-tree/nvim-web-devicons', 'folke/trouble.nvim' },
+    opts = {
+      options = {
+        icons_enabled = true,
+        -- theme = 'auto',
+        -- theme = 'gruvbox',
+        component_separators = { left = '', right = '' },
+        section_separators = { left = '', right = '' },
+        disabled_filetypes = {
+          statusline = {},
+          winbar = {},
+        },
+        ignore_focus = {},
+        always_divide_middle = true,
+        always_show_tabline = true,
+        globalstatus = false,
+        refresh = {
+          statusline = 100,
+          tabline = 100,
+          winbar = 100,
+        },
+      },
+      sections = {
+        lualine_a = { 'mode' },
+        lualine_b = { 'branch', 'diff', 'diagnostics' },
+        lualine_c = {
+          {
+            'filename',
+            file_status = true, -- displays file status (readonly, modified, etc)
+
+            -- path:
+            -- 0: Just the filename
+            -- 1: Relative path
+            -- 2: Absolute path
+            -- 3: Absolute path, with tilde as the home directory
+            -- 4: Filename and parent dir, with tilde as the home directory
+            path = 1,
+          },
+        },
+        lualine_x = { 'encoding', 'fileformat', 'filetype' },
+        lualine_y = { 'progress' },
+        lualine_z = { 'location' },
+      },
+      inactive_sections = {
+        lualine_a = {},
+        lualine_b = {},
+        lualine_c = { 'filename' },
+        lualine_x = { 'location' },
+        lualine_y = {},
+        lualine_z = {},
+      },
+      -- tabline = {
+      --   lualine_a = { 'buffers' },
+      --   lualine_b = { 'branch' },
+      --   lualine_c = { 'filename' },
+      --   lualine_x = {},
+      --   lualine_y = {},
+      --   lualine_z = { 'tabs' },
+      -- },
+      -- winbar = {
+      -- lualine_a = {
+      --   {
+      --     'filename',
+      --     file_status = true, -- displays file status (readonly, modified, etc)
+      --     path = 1,
+      --   },
+      -- },
+      -- lualine_b = {},
+      -- lualine_c = {},
+      --   lualine_x = {},
+      -- },
+      inactive_winbar = {},
+      extensions = {},
+    },
+    config = function(_, opts)
+      local trouble = require 'trouble'
+      local symbols = trouble.statusline {
+        mode = 'lsp_document_symbols',
+        groups = {},
+        title = false,
+        filter = { range = true },
+        format = '{kind_icon}{symbol.name:Normal}',
+        -- format = '{kind_icon}{symbol.name:red}',
+        -- The following line is needed to fix the background color
+        -- Set it to the lualine section you want to use
+        hl_group = 'lualine_b_normal',
+        -- hl_group = 'LineNr',
+      }
+      -- table.insert(opts.winbar.lualine_x, {
+      --   symbols.get,
+      --   cond = symbols.has,
+      -- })
+      require('lualine').setup(opts)
+    end,
+  },
+
+  {
+    'akinsho/bufferline.nvim',
+    version = '*',
+    dependencies = 'nvim-tree/nvim-web-devicons',
+    opts = {
+      options = {
+        mode = 'buffers', -- set to "tabs" to only show tabpages instead
+        -- style_preset = bufferline.style_preset.default, -- or bufferline.style_preset.minimal,
+        -- themable = true | false, -- allows highlight groups to be overriden i.e. sets highlights as default
+        numbers = 'buffer_id',
+        -- close_command = "bdelete! %d",       -- can be a string | function, | false see "Mouse actions"
+        -- right_mouse_command = "bdelete! %d", -- can be a string | function | false, see "Mouse actions"
+        -- left_mouse_command = "buffer %d",    -- can be a string | function, | false see "Mouse actions"
+        -- middle_mouse_command = nil,          -- can be a string | function, | false see "Mouse actions"
+        indicator = {
+          -- icon = '▎', -- this should be omitted if indicator style is not 'icon'
+          style = 'underline',
+        },
+        -- buffer_close_icon = '󰅖',
+        -- modified_icon = '● ',
+        -- close_icon = ' ',
+        -- left_trunc_marker = ' ',
+        -- right_trunc_marker = ' ',
+        -- --- name_formatter can be used to change the buffer's label in the bufferline.
+        -- --- Please note some names can/will break the
+        -- --- bufferline so use this at your discretion knowing that it has
+        -- --- some limitations that will *NOT* be fixed.
+        -- name_formatter = function(buf)  -- buf contains:
+        --       -- name                | str        | the basename of the active file
+        --       -- path                | str        | the full path of the active file
+        --       -- bufnr               | int        | the number of the active buffer
+        --       -- buffers (tabs only) | table(int) | the numbers of the buffers in the tab
+        --       -- tabnr (tabs only)   | int        | the "handle" of the tab, can be converted to its ordinal number using: `vim.api.nvim_tabpage_get_number(buf.tabnr)`
+        -- end,
+        -- max_name_length = 18,
+        -- max_prefix_length = 15, -- prefix used when a buffer is de-duplicated
+        -- truncate_names = true, -- whether or not tab names should be truncated
+        -- tab_size = 18,
+        diagnostics = 'nvim_lsp',
+        -- diagnostics_update_in_insert = false, -- only applies to coc
+        diagnostics_update_on_event = true, -- use nvim's diagnostic handler
+        -- -- The diagnostics indicator can be set to nil to keep the buffer name highlight but delete the highlighting
+        diagnostics_indicator = function(count, level, diagnostics_dict, context)
+          local s = ' '
+          for e, n in pairs(diagnostics_dict) do
+            local sym = e == 'error' and ' ' or (e == 'warning' and ' ' or ' ')
+            s = s .. n .. sym
+          end
+          return s
+        end,
+        -- -- NOTE this will be called a lot so don't do any heavy processing here
+        -- custom_filter = function(buf_number, buf_numbers)
+        --     -- filter out filetypes you don't want to see
+        --     if vim.bo[buf_number].filetype ~= "<i-dont-want-to-see-this>" then
+        --         return true
+        --     end
+        --     -- filter out by buffer name
+        --     if vim.fn.bufname(buf_number) ~= "<buffer-name-I-dont-want>" then
+        --         return true
+        --     end
+        --     -- filter out based on arbitrary rules
+        --     -- e.g. filter out vim wiki buffer from tabline in your work repo
+        --     if vim.fn.getcwd() == "<work-repo>" and vim.bo[buf_number].filetype ~= "wiki" then
+        --         return true
+        --     end
+        --     -- filter out by it's index number in list (don't show first buffer)
+        --     if buf_numbers[1] ~= buf_number then
+        --         return true
+        --     end
+        -- end,
+        -- offsets = {
+        --     {
+        --         filetype = "NvimTree",
+        --         text = "File Explorer" | function ,
+        --         text_align = "left" | "center" | "right"
+        --         separator = true
+        --     }
+        -- },
+        -- color_icons = true | false, -- whether or not to add the filetype icon highlights
+        -- get_element_icon = function(element)
+        --   -- element consists of {filetype: string, path: string, extension: string, directory: string}
+        --   -- This can be used to change how bufferline fetches the icon
+        --   -- for an element e.g. a buffer or a tab.
+        --   -- e.g.
+        --   local icon, hl = require('nvim-web-devicons').get_icon_by_filetype(element.filetype, { default = false })
+        --   return icon, hl
+        --   -- or
+        --   local custom_map = {my_thing_ft: {icon = "my_thing_icon", hl}}
+        --   return custom_map[element.filetype]
+        -- end,
+        -- show_buffer_icons = true | false, -- disable filetype icons for buffers
+        -- show_buffer_close_icons = true | false,
+        show_close_icon = false,
+        -- show_tab_indicators = true | false,
+        -- show_duplicate_prefix = true | false, -- whether to show duplicate buffer prefix
+        -- duplicates_across_groups = true, -- whether to consider duplicate paths in different groups as duplicates
+        -- persist_buffer_sort = true, -- whether or not custom sorted buffers should persist
+        -- move_wraps_at_ends = false, -- whether or not the move command "wraps" at the first or last position
+        -- -- can also be a table containing 2 custom separators
+        -- -- [focused and unfocused]. eg: { '|', '|' }
+        separator_style = 'slant',
+        -- enforce_regular_tabs = false | true,
+        -- always_show_bufferline = true | false,
+        -- auto_toggle_bufferline = true | false,
+        -- hover = {
+        --   enabled = true,
+        --   delay = 200,
+        --   reveal = { 'close' },
+        -- },
+        -- sort_by = 'insert_after_current' |'insert_at_end' | 'id' | 'extension' | 'relative_directory' | 'directory' | 'tabs' | function(buffer_a, buffer_b)
+        --     -- add custom logic
+        --     local modified_a = vim.fn.getftime(buffer_a.path)
+        --     local modified_b = vim.fn.getftime(buffer_b.path)
+        --     return modified_a > modified_b
+        -- end
+      },
+    },
+  },
 
   { -- Collection of various small independent plugins/modules
     'echasnovski/mini.nvim',
@@ -1207,17 +1787,17 @@ require('lazy').setup({
       -- Simple and easy statusline.
       --  You could remove this setup call if you don't like it,
       --  and try some other statusline plugin
-      local statusline = require 'mini.statusline'
+      -- local statusline = require 'mini.statusline'
       -- set use_icons to true if you have a Nerd Font
-      statusline.setup { use_icons = vim.g.have_nerd_font }
+      -- statusline.setup { use_icons = vim.g.have_nerd_font }
 
       -- You can configure sections in the statusline by overriding their
       -- default behavior. For example, here we set the section for
       -- cursor location to LINE:COLUMN
-      ---@diagnostic disable-next-line: duplicate-set-field
-      statusline.section_location = function()
-        return '%2l:%-2v'
-      end
+      -- ---@diagnostic disable-next-line: duplicate-set-field
+      -- statusline.section_location = function()
+      --   return '%2l:%-2v'
+      -- end
 
       -- ... and there is more!
       --  Check out: https://github.com/echasnovski/mini.nvim
@@ -1395,11 +1975,13 @@ require('lazy').setup({
     },
     config = function(_, opts)
       require('nvim-treesitter.configs').setup(opts)
-      vim.treesitter.language.register('bash', 'zsh') -- the someft filetype will use the python parser and queries.
+      -- Use bash parser for zsh filetypes.
+      -- Filetype is added based on filename, elsewhere via vim api.
+      vim.treesitter.language.register('bash', { 'zsh' })
       require('treesitter-context').setup {
         enable = true,
         mode = 'cursor',
-        multiline_threshold = 1,
+        multiline_threshold = 2,
         -- max_lines = 5,
         -- trim_scope = 'outer',
       }
@@ -1446,6 +2028,41 @@ require('lazy').setup({
   --   },
   -- },
 
+  ---@type LazySpec
+  {
+    'mikavilpas/yazi.nvim',
+    event = 'VeryLazy',
+    keys = {
+      -- 👇 in this section, choose your own keymappings!
+      {
+        '<leader>-',
+        '<cmd>Yazi<cr>',
+        desc = 'Open yazi at the current file',
+      },
+      {
+        -- Open in the current working directory
+        '<leader>cw',
+        '<cmd>Yazi cwd<cr>',
+        desc = "Open the file manager in nvim's working directory",
+      },
+      {
+        -- NOTE: this requires a version of yazi that includes
+        -- https://github.com/sxyazi/yazi/pull/1305 from 2024-07-18
+        '<c-up>',
+        '<cmd>Yazi toggle<cr>',
+        desc = 'Resume the last yazi session',
+      },
+    },
+    ---@type YaziConfig
+    opts = {
+      -- if you want to open yazi instead of netrw, see below for more info
+      open_for_directories = true,
+      keymaps = {
+        show_help = '<f1>',
+      },
+    },
+  },
+
   {
     'kdheepak/lazygit.nvim',
     lazy = true,
@@ -1467,6 +2084,57 @@ require('lazy').setup({
     },
   },
 
+  -- { 'github/copilot.vim' },
+
+  -- Avante is like cursor AI, for neovim.
+
+  -- {
+  --   'yetone/avante.nvim',
+  --   event = 'VeryLazy',
+  --   lazy = false,
+  --   version = false, -- set this if you want to always pull the latest change
+  --   opts = {
+  --     -- add any opts here
+  --   },
+  --   -- if you want to build from source then do `make BUILD_FROM_SOURCE=true`
+  --   build = 'make',
+  --   -- build = "powershell -ExecutionPolicy Bypass -File Build.ps1 -BuildFromSource false" -- for windows
+  --   dependencies = {
+  --     'nvim-treesitter/nvim-treesitter',
+  --     'stevearc/dressing.nvim',
+  --     'nvim-lua/plenary.nvim',
+  --     'MunifTanjim/nui.nvim',
+  --     --- The below dependencies are optional,
+  --     'nvim-tree/nvim-web-devicons', -- or echasnovski/mini.icons
+  --     'zbirenbaum/copilot.lua', -- for providers='copilot'
+  --     {
+  --       -- support for image pasting
+  --       'HakonHarnes/img-clip.nvim',
+  --       event = 'VeryLazy',
+  --       opts = {
+  --         -- recommended settings
+  --         default = {
+  --           embed_image_as_base64 = false,
+  --           prompt_for_file_name = false,
+  --           drag_and_drop = {
+  --             insert_mode = true,
+  --           },
+  --           -- required for Windows users
+  --           use_absolute_path = true,
+  --         },
+  --       },
+  --     },
+  --     {
+  --       -- Make sure to set this up properly if you have lazy=true
+  --       'MeanderingProgrammer/render-markdown.nvim',
+  --       opts = {
+  --         file_types = { 'markdown', 'Avante' },
+  --       },
+  --       ft = { 'markdown', 'Avante' },
+  --     },
+  --   },
+  -- },
+
   -- The following two comments only work if you have downloaded the kickstart repo, not just copy pasted the
   -- init.lua. If you want these files, they are in the repository, so you can just download them and
   -- place them in the correct locations.
@@ -1480,8 +2148,8 @@ require('lazy').setup({
   require 'kickstart.plugins.indent_line',
   -- require 'kickstart.plugins.lint',
   require 'kickstart.plugins.autopairs',
-  require 'kickstart.plugins.neo-tree',
-  require 'kickstart.plugins.gitsigns', -- adds gitsigns recommend keymaps
+  -- require 'kickstart.plugins.neo-tree', -- Use yatzi instead.
+  require 'kickstart.plugins.gitsigns', -- Adds gitsigns recommend keymaps.
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
