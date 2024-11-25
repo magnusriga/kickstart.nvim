@@ -245,7 +245,7 @@ vim.keymap.set('n', '<Esc>', '<cmd>nohlsearch<CR>')
 -- Diagnostic keymaps and settings.
 vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagnostic [Q]uickfix list' })
 vim.keymap.set('n', '<Leader>e', vim.diagnostic.open_float, { desc = 'Open diagnostic float, twice to focus' })
-vim.diagnostic.config { virtual_text = false }
+vim.diagnostic.config { virtual_text = false, severity_sort = true }
 
 -- Exit terminal mode in the builtin terminal with a shortcut that is a bit easier
 -- for people to discover. Otherwise, you normally need to press <C-\><C-n>, which
@@ -332,6 +332,50 @@ vim.opt.rtp:append '/home/linuxbrew/.linuxbrew/opt/fzf'
 --   -- formatStdin = true,
 -- }
 
+-- ============================================================================================
+-- Helper Functions
+-- ============================================================================================
+
+-- Filter for `vim.lsp.format()`, ensuring only null_ls is used for formatting
+-- buffers where typescript-tool is attached, as the other LSPs used for TS/JS
+-- files do not have capabilities: formattingProvider | rangeFormattingProvider.
+-- To check LSP clients attached to a buffer: `lua =vim.lsp.get_clients()`
+-- To check capabilities of their respective LSP servers, look at filed:
+-- `server_capabilities`.
+-- Check attacked LSPs: `:checkhealth lsp` | `:LspInfo`.
+local null_ls_filter = function(client)
+  -- vim.print('in format filter, client.name is: ' .. client.name)
+  return client.name ~= 'typescript-tools'
+end
+
+-- Function for formatting buffer, using all attached LSPs that supports
+-- formatting, except `typescript-tools`, because `null_ls` should be used
+-- instead for TS/JS formatting.
+local lsp_formatting = function(bufnr)
+  vim.lsp.buf.format {
+    bufnr = bufnr,
+    -- Restrict formatting to client with this id.
+    -- Do not include `id = client_by_id.id`, because order LSPs attach is
+    -- non-deterministic, `clear` in `nvim_create_autogroup` means autocommand
+    -- is only added for the last attached LSPs, and `format()` should not
+    -- simply use the last attached LSP.
+    -- Thus, used filter instead, which picks the right LSP by name, i.e.
+    -- null_lsp.
+    -- id = client_by_id.id,
+    -- async = false means format is done before buffer write is allowed to proceed,
+    -- not in parallel. false is dafault, so setting to false is redundant.
+    async = false,
+    -- vim.lsp.buf.format normally runs formatting by all attached LSPs
+    -- with formatting capabilities. Instead, add filter so vim.lsp.format()
+    -- only runs formatting by null_ls, which is set up to use prettierd.
+    filter = null_ls_filter,
+  }
+end
+
+-- ============================================================================================
+-- Lazy Plugins
+-- ============================================================================================
+
 -- [[ Install `lazy.nvim` plugin manager ]]
 --    See `:help lazy.nvim.txt` or https://github.com/folke/lazy.nvim for more info
 local lazypath = vim.fn.stdpath 'data' .. '/lazy/lazy.nvim'
@@ -367,26 +411,8 @@ require('lazy').setup({
   -- NOTE: Plugins can also be added by using a table,
   -- with the first argument being the link and the following
   -- keys can be used to configure plugin behavior/loading/etc.
-  --
-  -- Use `opts = {}` to force a plugin to be loaded.
 
-  -- Here is a more advanced example where we pass configuration
-  -- options to `gitsigns.nvim`. This is equivalent to the following Lua:
-  --    require('gitsigns').setup({ ... })
-  --
-  -- See `:help gitsigns` to understand what the configuration keys do
-  { -- Adds git related signs to the gutter, as well as utilities for managing changes
-    'lewis6991/gitsigns.nvim',
-    opts = {
-      signs = {
-        add = { text = '+' },
-        change = { text = '~' },
-        delete = { text = '_' },
-        topdelete = { text = '‾' },
-        changedelete = { text = '~' },
-      },
-    },
-  },
+  -- Use `opts = {}` to force a plugin to be loaded.
 
   -- NOTE: Plugins can also be configured to run Lua code when they are loaded.
   --
@@ -396,8 +422,8 @@ require('lazy').setup({
   -- For example, in the following configuration, we use:
   --  event = 'VimEnter'
   --
-  -- which loads which-key before all the UI elements are loaded. Events can be
-  -- normal autocommands events (`:help autocmd-events`).
+  -- which loads which-key before all the UI elements are loaded.
+  -- Events can be normal autocommands events (`:help autocmd-events`).
   --
   -- Then, because we use the `config` key, the configuration only runs
   -- after the plugin has been loaded:
@@ -484,7 +510,6 @@ require('lazy').setup({
         end,
       },
       { 'nvim-telescope/telescope-ui-select.nvim' },
-
       -- Useful for getting pretty icons, but requires a Nerd Font.
       { 'nvim-tree/nvim-web-devicons', enabled = vim.g.have_nerd_font },
     },
@@ -509,10 +534,10 @@ require('lazy').setup({
       -- do as well as how to actually do it!
 
       -- Custom action inside telescope, to open trouble list.
-      local actions = require 'telescope.actions'
-      local open_with_trouble = require('trouble.sources.telescope').open
       -- Use this to add more results without clearing the trouble list
-      local add_to_trouble = require('trouble.sources.telescope').add
+      -- local actions = require 'telescope.actions'
+      -- local open_with_trouble = require('trouble.sources.telescope').open
+      -- local add_to_trouble = require('trouble.sources.telescope').add
 
       -- [[ Configure Telescope ]]
       -- See `:help telescope` and `:help telescope.setup()`
@@ -520,11 +545,11 @@ require('lazy').setup({
         -- You can put your default mappings / updates / etc. in here
         --  All the info you're looking for is in `:help telescope.setup()`
         defaults = {
-          mappings = {
-            -- Map <c-t> inside a Telescope prompt to open the trouble list.
-            i = { ['<c-t>'] = open_with_trouble },
-            n = { ['<c-t>'] = open_with_trouble },
-          },
+          -- mappings = {
+          --   -- Map <c-t> inside a Telescope prompt to open the trouble list.
+          --   i = { ['<c-t>'] = open_with_trouble },
+          --   n = { ['<c-t>'] = open_with_trouble },
+          -- },
 
           -- Decide arguments passed to rg, used under hood by Telescope.
           -- See defaults: :h telescope.setup() > vimgrep_arguments.
@@ -563,12 +588,13 @@ require('lazy').setup({
             exclude = { 'node_modules', '.git', '.cache', '.history', '.rustup', '.cargo' },
             -- glob = { '!.git/*', '!.cache/*', '!.history/*', '!.rust*/*', '!.node_modules/*' },
           },
-          lsp_document_symbols = {
-            symbols = {
-              'function',
-              'method',
-            },
-          },
+          -- lsp_document_symbols = {
+          --   symbols = {
+          --     'function',
+          --     'method',
+          --     ''
+          --   },
+          -- },
         },
         extensions = {
           ['ui-select'] = {
@@ -633,20 +659,20 @@ require('lazy').setup({
   },
 
   -- LSP Plugins
-  {
-    -- `lazydev` configures Lua LSP for your Neovim config, runtime and plugins
-    -- used for completion, annotations and signatures of Neovim apis
-    'folke/lazydev.nvim',
-    ft = 'lua',
-    opts = {
-      library = {
-        -- Load luvit types when the `vim.uv` word is found
-        { path = 'luvit-meta/library', words = { 'vim%.uv' } },
-      },
-    },
-  },
+  -- {
+  --   -- `lazydev` configures Lua LSP for your Neovim config, runtime and plugins
+  --   -- used for completion, annotations and signatures of Neovim apis
+  --   'folke/lazydev.nvim',
+  --   ft = 'lua',
+  --   opts = {
+  --     library = {
+  --       -- Load luvit types when the `vim.uv` word is found
+  --       { path = 'luvit-meta/library', words = { 'vim%.uv' } },
+  --     },
+  --   },
+  -- },
 
-  { 'Bilal2453/luvit-meta', lazy = true },
+  -- { 'Bilal2453/luvit-meta', lazy = true },
 
   -- TypeScript LSP.
   {
@@ -661,11 +687,12 @@ require('lazy').setup({
       -- capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
       require('typescript-tools').setup {
         -- capabilities = capabilities,
-        on_attach = function(client)
-          client.server_capabilities.documentFormattingProvider = false
-          client.server_capabilities.documentRangeFormattingProvider = false
-        end,
-
+        -- No need to turn off these server capabilities here, as vim.lsp.format() is
+        -- manually set to not use `typescript-tools`.
+        -- on_attach = function(client)
+        --   client.server_capabilities.documentFormattingProvider = false
+        --   client.server_capabilities.documentRangeFormattingProvider = false
+        -- end,
         settings = {
           jsx_close_tag = {
             enable = true,
@@ -721,7 +748,22 @@ require('lazy').setup({
         sources = {
           require 'none-ls.diagnostics.eslint_d',
           require 'none-ls.code_actions.eslint_d',
+          null_ls.builtins.formatting.stylua,
+          null_ls.builtins.formatting.shfmt.with {
+            filetypes = {
+              'sh',
+              'zsh',
+              'bash',
+            },
+          },
           null_ls.builtins.formatting.prettierd,
+          -- null_ls.builtins.formatting.prettierd.with {
+          --   env = {
+          --     --TODO: Check if this is needed.
+          --     PRETTIERD_DEFAULT_CONFIG = vim.fn.expand '~/nfront/.prettierrc.js',
+          --   },
+          -- },
+          -- null_ls.builtins.formatting.prettierd,
           -- require 'none-ls.formatting.prettier_d',
         },
       }
@@ -742,7 +784,7 @@ require('lazy').setup({
       { 'j-hui/fidget.nvim', opts = {} },
 
       -- Allows extra capabilities provided by nvim-cmp
-      'hrsh7th/cmp-nvim-lsp',
+      -- 'hrsh7th/cmp-nvim-lsp',
     },
     config = function()
       -- Brief aside: **What is LSP?**
@@ -770,44 +812,125 @@ require('lazy').setup({
       -- If you're wondering about lsp vs treesitter, you can check out the wonderfully
       -- and elegantly composed help section, `:help lsp-vs-treesitter`
 
-      --  This function gets run when an LSP attaches to a particular buffer.
-      --    That is to say, every time a new file is opened that is associated with
-      --    an lsp (for example, opening `main.rs` is associated with `rust_analyzer`) this
-      --    function will be executed to configure the current buffer
+      -- This function gets run when an LSP attaches to a particular buffer.
+      -- Meaning, every time a new file is opened that is associated with
+      -- an lsp this function will be executed to configure the current buffer.
+      -- It does not only run for lsp's installed via Lazy, but for all LSPs that
+      -- attach to a buffer. Meaning, the autocommand applies to all LSPs.
+      -- LSPs, including `typescript-tools`.
+      -- Clear in `vim.api.nvim_create_augroup()`, means the autocommands in that group
+      -- will be cleared if the group already exists, which is useful if the autocmd function
+      -- runs more than once.
+      -- In fact, here it will run every time an LSP attaches, and due to `clear` the
+      -- previously added automcommands will be deleted.
       vim.api.nvim_create_autocmd('LspAttach', {
-        group = vim.api.nvim_create_augroup('kickstart-lsp-attach', { clear = true }),
+        group = vim.api.nvim_create_augroup('lsp-attach', { clear = true }),
         callback = function(event)
-          -- NOTE: Remember that Lua is a real programming language, and as such it is possible
-          -- to define small helper and utility functions so you don't have to repeat yourself.
-          --
-          -- In this case, we create a function that lets us more easily define mappings specific
-          -- for LSP related items. It sets the mode, buffer and description for us each time.
+          local client_by_id = vim.lsp.get_client_by_id(event.data.client_id)
+          local buffer_number = event.buf
+
+          -- Return true if null-ls has an active source set with formatting,
+          -- for the current buffer's filetype, otherwise return false.
+          local function is_null_ls_formatting_enabled(bufnr)
+            local file_type = vim.api.nvim_buf_get_option(bufnr, 'filetype')
+            local generators = require('null-ls.generators').get_available(file_type, require('null-ls.methods').internal.FORMATTING)
+            return #generators > 0
+          end
+
+          -- If null-ls attaches to buffer, but does NOT have a formatting method,
+          -- then option `formatexpr` should not be set, to avoid breaking gq in those
+          -- buffer. In other buffers, where null_ls is not attached, or where null_ls is
+          -- attached with a formatting method, `formatexpr` can be set to its default `v:lua.vim.lsp.formatexpr()`.
+          -- More information: https://github.com/nvimtools/none-ls.nvim/wiki/Avoiding-LSP-formatting-conflicts#avoid-breaking-formatexpr-ie-gq
+          -- if client_by_id.server_capabilities.documentFormattingProvider then
+          --   if client_by_id.name == 'null-ls' and is_null_ls_formatting_enabled(buffer_number) or client_by_id.name ~= 'null-ls' then
+          --     vim.bo[buffer_number].formatexpr = 'v:lua.vim.lsp.formatexpr()'
+          --     -- vim.keymap.set('n', '<leader>gq', '<cmd>lua vim.lsp.buf.format({ async = true })<CR>', opts)
+          --   else
+          --     vim.bo[buffer_number].formatexpr = nil
+          --   end
+          -- end
+
+          -- Format the current buffer on save, not using typescript-tools,
+          -- meaning null_ls is used if the file is applicable.
+          -- Also, only create the formatting ability when client is null-ls, to avoid
+          -- multiple redundant autocommands, i.e. one for each attached LSP, we only need one.
+          if client_by_id.supports_method 'textDocument/formatting' and client_by_id.name == 'null-ls' and is_null_ls_formatting_enabled(buffer_number) then
+            -- Cannot have clear = true, because attaching to new buffer, i.e. opening new
+            -- file, will cause the autocommand for a previously opened buffer to be deleted.
+            local augroup_lsp_format = vim.api.nvim_create_augroup('lsp-format', { clear = false })
+            vim.api.nvim_create_autocmd('BufWritePre', {
+              group = augroup_lsp_format,
+              buffer = buffer_number,
+              callback = function()
+                -- vim.print('writing, autocmd running for client: ' .. client_by_id.name .. ', and buffer number: ' .. buffer_number)
+                lsp_formatting(buffer_number)
+              end,
+            })
+
+            -- Remove the format-on-save autocommand, when any LSP detaches from buffer.
+            vim.api.nvim_create_autocmd('LspDetach', {
+              group = vim.api.nvim_create_augroup('lsp-detach', { clear = true }),
+              callback = function(event2)
+                vim.api.nvim_clear_autocmds {
+                  -- event = 'BufWritePre',
+                  group = 'lsp-format',
+                  buffer = event2.buf,
+                }
+              end,
+            })
+          end
+
+          -- Function to define mappings specific for LSP related items.
+          -- Sets mode, buffer, description.
           local map = function(keys, func, desc, mode)
             mode = mode or 'n'
             vim.keymap.set(mode, keys, func, { buffer = event.buf, desc = 'LSP: ' .. desc })
           end
 
-          -- Jump to the definition of the word under your cursor.
-          --  This is where a variable was first declared, or where a function is defined, etc.
-          --  To jump back, press <C-t>.
-          map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
+          -- Function to format current buffer.
+          local format_current_buffer = function()
+            lsp_formatting(buffer_number)
+          end
 
-          -- Find references for the word under your cursor.
+          -- Even though these key maps are defined several times, for every LSP that attaches,
+          -- newer ones overwrite old ones.
+          map('<leader>f', format_current_buffer, '[F]ormat buffer')
+
+          -- Note: Bindings below use telescope, because it shows list if there are more
+          -- hits, otherwise, if there is only one match, it goes to the word under the
+          -- cursor using standard lsp client methods: lsp.buf.hover(), lsp.buf.definition, etc.
+
+          -- Jump to the definition of the word under your cursor.
+          -- This is where a variable was first declared, or where a function is defined, etc.
+          -- To jump back, press <C-t> | <C-o>.
+          -- Go to definition is natively set to CTRL-], so do not add additional binding.
+          -- See: :h lsp-defaults.
+          -- map('gd', require('telescope.builtin').lsp_definitions, '[G]oto [D]efinition')
+
+          -- Find references for the word under your cursor, using a telescope window
+          -- instead of quickfix window used by vim.buf.lsp.references().
           map('gr', require('telescope.builtin').lsp_references, '[G]oto [R]eferences')
 
           -- Jump to the implementation of the word under your cursor.
-          --  Useful when your language has ways of declaring types without an actual implementation.
+          -- Useful when your language has ways of declaring types without an actual implementation.
+          -- Uses telescope window instead of quickfix window used by
+          -- vim.lsp.buf.implementation().
           map('gI', require('telescope.builtin').lsp_implementations, '[G]oto [I]mplementation')
 
           -- Jump to the type of the word under your cursor.
-          --  Useful when you're not sure what type a variable is and you want to see
-          --  the definition of its *type*, not where it was *defined*.
+          -- Useful when you're not sure what type a variable is and you want to see
+          -- the definition of its *type*, not where it was *defined*.
+          -- If only one match it jumps to it using lsp.buf.type_definition,
+          -- otherwise shows all options in telescope window.
           map('<leader>D', require('telescope.builtin').lsp_type_definitions, 'Type [D]efinition')
 
           -- Fuzzy find all the symbols in your current document.
-          --  Symbols are things like variables, functions, types, etc.
-          map('<leader>ds', require('telescope.builtin').lsp_document_symbols, '[D]ocument [S]ymbols')
-
+          -- Symbols are things like variables, functions, types, etc.
+          -- Uses telescope window, instead of quickfix window used by
+          -- vim.lsp.buf.document_symbol().
+          -- Symbol kinds: https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#textDocument_documentSymbol
+          -- map('<leader>ds', require('telescope.builtin').lsp_document_symbols, '[D]ocument [S]ymbols')
           map('<leader>o', function()
             require('telescope.builtin').lsp_document_symbols(require('telescope.themes').get_dropdown {
               winblend = 10,
@@ -815,25 +938,24 @@ require('lazy').setup({
             })
           end, 'Symbols')
 
-          -- Fuzzy find all the symbols in your current workspace.
-          --  Similar to document symbols, except searches over your entire project.
+          -- Fuzzy find all symbols in the current workspace.
+          -- Similar to document symbols, except searches over entire project.
+          -- Workspace root is somehow set by
           map('<leader>ws', require('telescope.builtin').lsp_dynamic_workspace_symbols, '[W]orkspace [S]ymbols')
 
-          -- Rename the variable under your cursor.
-          --  Most Language Servers support renaming across files, etc.
+          -- Rename variable under cursor, using LSP.
           map('<leader>rn', vim.lsp.buf.rename, '[R]e[n]ame')
 
           -- Execute a code action, usually your cursor needs to be on top of an error
           -- or a suggestion from your LSP for this to activate.
           map('<leader>ca', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x' })
 
-          -- WARN: This is not Goto Definition, this is Goto Declaration.
-          --  For example, in C this would take you to the header.
-          map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
+          -- Declaration is normally not used, prefer Definition.
+          -- map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
 
           -- The following two autocommands are used to highlight references of the
           -- word under your cursor when your cursor rests there for a little while.
-          --    See `:help CursorHold` for information about when this is executed
+          -- See `:help CursorHold` for information about when this is executed.
           --
           -- When you move your cursor, the highlights will be cleared (the second autocommand).
           local client = vim.lsp.get_client_by_id(event.data.client_id)
@@ -861,8 +983,8 @@ require('lazy').setup({
           end
 
           -- The following code creates a keymap to toggle inlay hints in your
-          -- code, if the language server you are using supports them
-          -- This may be unwanted, since they displace some of your code
+          -- code, if the language server in use supports them.
+          -- This may be unwanted, since they displace some code.
           if client and client.supports_method(vim.lsp.protocol.Methods.textDocument_inlayHint) then
             map('<leader>th', function()
               vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf })
@@ -872,11 +994,12 @@ require('lazy').setup({
       })
 
       -- LSP servers and clients are able to communicate to each other what features they support.
-      --  By default, Neovim doesn't support everything that is in the LSP specification.
-      --  When you add nvim-cmp, luasnip, etc. Neovim now has *more* capabilities.
-      --  So, we create new capabilities with nvim cmp, and then broadcast that to the servers.
-      local capabilities = vim.lsp.protocol.make_client_capabilities()
-      capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
+      -- By default, Neovim doesn't support everything that is in the LSP specification.
+      -- When you add nvim-cmp, luasnip, etc. Neovim now has *more* capabilities.
+      -- So, we create new capabilities with nvim cmp, and then broadcast that to the servers.
+
+      -- local capabilities = vim.lsp.protocol.make_client_capabilities()
+      -- capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
 
       -- Enable the following language servers
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
@@ -909,12 +1032,6 @@ require('lazy').setup({
         -- https://github.com/pmizio/typescript-tools.nvim
         -- But for many setups, the LSP (`ts_ls`) will work just fine.
         -- ts_ls = {},
-
-        tailwindcss = {
-          --   -- flags = {
-          --   --   debounce_text_changes = 1000,
-          --   -- },
-        },
 
         -- efm = {
         --
@@ -981,6 +1098,12 @@ require('lazy').setup({
 
         -- marksman = {},
 
+        tailwindcss = {
+          --   -- flags = {
+          --   --   debounce_text_changes = 1000,
+          --   -- },
+        },
+
         html = {},
         cssls = {
           filetypes = { 'css' },
@@ -1023,9 +1146,9 @@ require('lazy').setup({
       -- for you, so that they are available from within Neovim.
       local ensure_installed = vim.tbl_keys(servers or {})
       vim.list_extend(ensure_installed, {
-        'stylua', -- Used to format Lua code.
-        'prettierd', -- Used to format JavaScript and TypeScript code.
-        'prettier', -- Backup, in case prettierd stops working.
+        'stylua', -- Format Lua code.
+        'prettierd', -- Format JavaScript and TypeScript code.
+        -- 'prettier',
         'eslint_d',
         'shfmt',
         'shellcheck',
@@ -1039,7 +1162,8 @@ require('lazy').setup({
             -- This handles overriding only values explicitly passed
             -- by the server configuration above. Useful when disabling
             -- certain features of an LSP (for example, turning off formatting for ts_ls)
-            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+            -- server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+
             require('lspconfig')[server_name].setup(server)
           end,
         },
@@ -1047,164 +1171,164 @@ require('lazy').setup({
     end,
   },
 
-  { -- Autoformat
-    'stevearc/conform.nvim',
-    event = { 'BufWritePre' },
-    cmd = { 'ConformInfo' },
-    keys = {
-      {
-        '<leader>f',
-        function()
-          require('conform').format { async = true, lsp_format = 'fallback' }
-        end,
-        mode = '',
-        desc = '[F]ormat buffer',
-      },
-    },
-    opts = {
-      notify_on_error = false,
-      format_on_save = function(bufnr)
-        -- Disable "format_on_save lsp_fallback" for languages that don't
-        -- have a well standardized coding style. You can add additional
-        -- languages here or re-enable it for the disabled ones.
-        local disable_filetypes = { c = true, cpp = true }
-        local lsp_format_opt
-        if disable_filetypes[vim.bo[bufnr].filetype] then
-          lsp_format_opt = 'never'
-        else
-          lsp_format_opt = 'fallback'
-        end
-        return {
-          timeout_ms = 1000,
-          lsp_format = lsp_format_opt,
-        }
-      end,
-      formatters_by_ft = {
-        -- Conform can also run multiple formatters sequentially.
-        -- You can use 'stop_after_first' to run the first available formatter from the list
-        -- javascript = { 'prettierd', 'prettier', stop_after_first = true },
-        -- typescript = { 'prettierd', 'prettier', stop_after_first = true },
-        -- javascriptreact = { 'prettierd', 'prettier', stop_after_first = true },
-        -- typescriptreact = { 'prettierd', 'prettier', stop_after_first = true },
-        -- css = { 'prettierd', 'prettier', stop_after_first = true },
-        -- html = { 'prettierd', 'prettier', stop_after_first = true },
-        -- json = { 'prettierd', 'prettier', stop_after_first = true },
-        -- yaml = { 'prettierd', 'prettier', stop_after_first = true },
-        -- markdown = { 'prettierd', 'prettier', stop_after_first = true },
-        -- graphql = { 'prettierd', 'prettier', stop_after_first = true },
-        lua = { 'stylua' },
-        bash = { 'shfmt' },
-        zsh = { 'shfmt' },
-        sh = { 'shfmt' },
-        -- python = { 'isort', 'black' },
-      },
-      -- formatters = {
-      --   prettierd = function(bufnr)
-      --     return {
-      --       command = 'prettierd',
-      --       args = { vim.api.nvim_buf_get_name(bufnr) },
-      --       stdin = true,
-      --       env = {
-      --         string.format('PRETTIERD_DEFAULT_CONFIG=%s', vim.fn.expand '~/nfront/.prettierrc.js'),
-      --       },
-      --     }
-      --   end,
-      -- },
-    },
-  },
+  -- { -- Autoformat
+  --   'stevearc/conform.nvim',
+  --   event = { 'BufWritePre' },
+  --   cmd = { 'ConformInfo' },
+  --   keys = {
+  --     {
+  --       '<leader>f',
+  --       function()
+  --         require('conform').format { async = true, lsp_format = 'fallback' }
+  --       end,
+  --       mode = '',
+  --       desc = '[F]ormat buffer',
+  --     },
+  --   },
+  --   opts = {
+  --     notify_on_error = false,
+  --     format_on_save = function(bufnr)
+  --       -- Disable "format_on_save lsp_fallback" for languages that don't
+  --       -- have a well standardized coding style. You can add additional
+  --       -- languages here or re-enable it for the disabled ones.
+  --       local disable_filetypes = { c = true, cpp = true }
+  --       local lsp_format_opt
+  --       if disable_filetypes[vim.bo[bufnr].filetype] then
+  --         lsp_format_opt = 'never'
+  --       else
+  --         lsp_format_opt = 'fallback'
+  --       end
+  --       return {
+  --         timeout_ms = 1000,
+  --         lsp_format = lsp_format_opt,
+  --       }
+  --     end,
+  --     formatters_by_ft = {
+  --       -- Conform can also run multiple formatters sequentially.
+  --       -- You can use 'stop_after_first' to run the first available formatter from the list
+  --       -- javascript = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- typescript = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- javascriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- typescriptreact = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- css = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- html = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- json = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- yaml = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- markdown = { 'prettierd', 'prettier', stop_after_first = true },
+  --       -- graphql = { 'prettierd', 'prettier', stop_after_first = true },
+  --       lua = { 'stylua' },
+  --       bash = { 'shfmt' },
+  --       zsh = { 'shfmt' },
+  --       sh = { 'shfmt' },
+  --       -- python = { 'isort', 'black' },
+  --     },
+  --     -- formatters = {
+  --     --   prettierd = function(bufnr)
+  --     --     return {
+  --     --       command = 'prettierd',
+  --     --       args = { vim.api.nvim_buf_get_name(bufnr) },
+  --     --       stdin = true,
+  --     --       env = {
+  --     --         string.format('PRETTIERD_DEFAULT_CONFIG=%s', vim.fn.expand '~/nfront/.prettierrc.js'),
+  --     --       },
+  --     --     }
+  --     --   end,
+  --     -- },
+  --   },
+  -- },
 
   { -- Autocompletion
     'hrsh7th/nvim-cmp',
     event = 'InsertEnter',
     dependencies = {
       -- Snippet Engine & its associated nvim-cmp source
-      {
-        'L3MON4D3/LuaSnip',
-        build = (function()
-          -- Build Step is needed for regex support in snippets.
-          -- This step is not supported in many windows environments.
-          -- Remove the below condition to re-enable on windows.
-          if vim.fn.has 'win32' == 1 or vim.fn.executable 'make' == 0 then
-            return
-          end
-          return 'make install_jsregexp'
-        end)(),
-        dependencies = {
-          -- `friendly-snippets` contains a variety of premade snippets.
-          --    See the README about individual language/framework/plugin snippets:
-          --    https://github.com/rafamadriz/friendly-snippets
-          -- {
-          --   'rafamadriz/friendly-snippets',
-          --   config = function()
-          --     require('luasnip.loaders.from_vscode').lazy_load()
-          --   end,
-          -- },
-        },
-      },
-      'saadparwaiz1/cmp_luasnip',
-
-      -- Adds other completion capabilities.
-      --  nvim-cmp does not ship with all sources by default. They are split
-      --  into multiple repos for maintenance purposes.
+      --     {
+      --       'L3MON4D3/LuaSnip',
+      --       build = (function()
+      --         -- Build Step is needed for regex support in snippets.
+      --         -- This step is not supported in many windows environments.
+      --         -- Remove the below condition to re-enable on windows.
+      --         if vim.fn.has 'win32' == 1 or vim.fn.executable 'make' == 0 then
+      --           return
+      --         end
+      --         return 'make install_jsregexp'
+      --       end)(),
+      --       dependencies = {
+      --         -- `friendly-snippets` contains a variety of premade snippets.
+      --         --    See the README about individual language/framework/plugin snippets:
+      --         --    https://github.com/rafamadriz/friendly-snippets
+      --         -- {
+      --         --   'rafamadriz/friendly-snippets',
+      --         --   config = function()
+      --         --     require('luasnip.loaders.from_vscode').lazy_load()
+      --         --   end,
+      --         -- },
+      --       },
+      --     },
+      --     'saadparwaiz1/cmp_luasnip',
+      --
+      --     -- Adds other completion capabilities.
+      --     --  nvim-cmp does not ship with all sources by default. They are split
+      --     --  into multiple repos for maintenance purposes.
       'hrsh7th/cmp-nvim-lsp',
-      'hrsh7th/cmp-path',
-      'onsails/lspkind.nvim',
+      --     'hrsh7th/cmp-path',
+      --     'onsails/lspkind.nvim',
     },
     config = function()
-      -- See `:help cmp`
+      --     -- See `:help cmp`
       local cmp = require 'cmp'
-      local luasnip = require 'luasnip'
-      local lspkind = require 'lspkind'
-
-      luasnip.config.setup {}
-
+      --     local luasnip = require 'luasnip'
+      --     local lspkind = require 'lspkind'
+      --
+      --     luasnip.config.setup {}
+      --
       cmp.setup {
-        snippet = {
-          expand = function(args)
-            luasnip.lsp_expand(args.body)
-          end,
-        },
-        completion = { completeopt = 'menu,menuone,noinsert' },
-        -- formatting = {
-        --   fields = { cmp.ItemField.Abbr, cmp.ItemField.Menu },
-        --   expandable_indicator = true,
-        --   format = lspkind.cmp_format {
-        --     mode = 'symbol', -- show only symbol annotations
-        --     maxwidth = {
-        --       -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
-        --       -- can also be a function to dynamically calculate max width such as
-        --       -- menu = function() return math.floor(0.45 * vim.o.columns) end,
-        --       menu = 50, -- leading text (labelDetails)
-        --       abbr = 50, -- actual suggestion item
-        --     },
-        --   },
-        -- },
+        --       snippet = {
+        --         expand = function(args)
+        --           luasnip.lsp_expand(args.body)
+        --         end,
+        --       },
+        --       completion = { completeopt = 'menu,menuone,noinsert' },
+        --       -- formatting = {
+        --       --   fields = { cmp.ItemField.Abbr, cmp.ItemField.Menu },
+        --       --   expandable_indicator = true,
+        --       --   format = lspkind.cmp_format {
+        --       --     mode = 'symbol', -- show only symbol annotations
+        --       --     maxwidth = {
+        --       --       -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
+        --       --       -- can also be a function to dynamically calculate max width such as
+        --       --       -- menu = function() return math.floor(0.45 * vim.o.columns) end,
+        --       --       menu = 50, -- leading text (labelDetails)
+        --       --       abbr = 50, -- actual suggestion item
+        --       --     },
+        --       --   },
+        --       -- },
+        --       --
         --
-
-        formatting = {
-          format = lspkind.cmp_format {
-            mode = 'symbol', -- show only symbol annotations
-            maxwidth = {
-              -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
-              -- can also be a function to dynamically calculate max width such as
-              -- menu = function() return math.floor(0.45 * vim.o.columns) end,
-              menu = 50, -- leading text (labelDetails)
-              abbr = 50, -- actual suggestion item
-            },
-            ellipsis_char = '...', -- when popup menu exceed maxwidth, the truncated part would show ellipsis_char instead (must define maxwidth first)
-            show_labelDetails = true, -- show labelDetails in menu. Disabled by default
-
-            -- The function below will be called before any actual modifications from lspkind
-            -- so that you can provide more controls on popup customization. (See [#30](https://github.com/onsails/lspkind-nvim/pull/30))
-            -- before = function (entry, vim_item)
-            --   ...
-            --   return vim_item
-            -- end
-          },
-        },
-        -- For an understanding of why these mappings were
-        -- chosen, you will need to read `:help ins-completion`
-
+        --       formatting = {
+        --         format = lspkind.cmp_format {
+        --           mode = 'symbol', -- show only symbol annotations
+        --           maxwidth = {
+        --             -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
+        --             -- can also be a function to dynamically calculate max width such as
+        --             -- menu = function() return math.floor(0.45 * vim.o.columns) end,
+        --             menu = 50, -- leading text (labelDetails)
+        --             abbr = 50, -- actual suggestion item
+        --           },
+        --           ellipsis_char = '...', -- when popup menu exceed maxwidth, the truncated part would show ellipsis_char instead (must define maxwidth first)
+        --           show_labelDetails = true, -- show labelDetails in menu. Disabled by default
+        --
+        --           -- The function below will be called before any actual modifications from lspkind
+        --           -- so that you can provide more controls on popup customization. (See [#30](https://github.com/onsails/lspkind-nvim/pull/30))
+        --           -- before = function (entry, vim_item)
+        --           --   ...
+        --           --   return vim_item
+        --           -- end
+        --         },
+        --       },
+        --       -- For an understanding of why these mappings were
+        --       -- chosen, you will need to read `:help ins-completion`
+        --
         -- No, but seriously. Please read `:help ins-completion`, it is really good!
         mapping = cmp.mapping.preset.insert {
           -- Select the [n]ext item
@@ -1255,14 +1379,14 @@ require('lazy').setup({
           --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
         },
         sources = {
-          {
-            name = 'lazydev',
-            -- set group index to 0 to skip loading LuaLS completions as lazydev recommends it
-            group_index = 0,
-          },
+          --         {
+          --           name = 'lazydev',
+          --           -- set group index to 0 to skip loading LuaLS completions as lazydev recommends it
+          --           group_index = 0,
+          --         },
           { name = 'nvim_lsp' },
-          { name = 'luasnip' },
-          { name = 'path' },
+          --         { name = 'luasnip' },
+          --         { name = 'path' },
         },
       }
     end,
@@ -1322,6 +1446,9 @@ require('lazy').setup({
       vim.cmd [[ highlight DiagnosticUnderlineWarn cterm=undercurl gui=undercurl guifg=NONE guisp=yellow ]]
       vim.cmd [[ highlight DiagnosticUnderlineInfo cterm=undercurl gui=undercurl guifg=NONE guisp=LightBlue ]]
       vim.cmd [[ highlight DiagnosticUnderlineHint cterm=undercurl gui=undercurl guifg=NONE guisp=#2bbac5 ]]
+      -- DiagnosticUnnecessary is used for unused variables, but links to highlightgroup
+      -- Comment, by default.
+      vim.cmd [[ highlight DiagnosticUnnecessary guifg=#495162 ]]
     end,
   },
 
@@ -1549,263 +1676,263 @@ require('lazy').setup({
     },
   },
 
-  {
-    'nvim-lualine/lualine.nvim',
-    dependencies = { 'nvim-tree/nvim-web-devicons', 'folke/trouble.nvim' },
-    opts = {
-      options = {
-        icons_enabled = true,
-        -- theme = 'auto',
-        -- theme = 'gruvbox',
-        component_separators = { left = '', right = '' },
-        section_separators = { left = '', right = '' },
-        disabled_filetypes = {
-          statusline = {},
-          winbar = {},
-        },
-        ignore_focus = {},
-        always_divide_middle = true,
-        always_show_tabline = true,
-        globalstatus = false,
-        refresh = {
-          statusline = 100,
-          tabline = 100,
-          winbar = 100,
-        },
-      },
-      sections = {
-        lualine_a = { 'mode' },
-        lualine_b = { 'branch', 'diff', 'diagnostics' },
-        lualine_c = {
-          {
-            'filename',
-            file_status = true, -- displays file status (readonly, modified, etc)
+  -- {
+  --   'nvim-lualine/lualine.nvim',
+  --   dependencies = { 'nvim-tree/nvim-web-devicons', 'folke/trouble.nvim' },
+  --   opts = {
+  --     options = {
+  --       icons_enabled = true,
+  --       -- theme = 'auto',
+  --       -- theme = 'gruvbox',
+  --       component_separators = { left = '', right = '' },
+  --       section_separators = { left = '', right = '' },
+  --       disabled_filetypes = {
+  --         statusline = {},
+  --         winbar = {},
+  --       },
+  --       ignore_focus = {},
+  --       always_divide_middle = true,
+  --       always_show_tabline = true,
+  --       globalstatus = false,
+  --       refresh = {
+  --         statusline = 100,
+  --         tabline = 100,
+  --         winbar = 100,
+  --       },
+  --     },
+  --     sections = {
+  --       lualine_a = { 'mode' },
+  --       lualine_b = { 'branch', 'diff', 'diagnostics' },
+  --       lualine_c = {
+  --         {
+  --           'filename',
+  --           file_status = true, -- displays file status (readonly, modified, etc)
+  --
+  --           -- path:
+  --           -- 0: Just the filename
+  --           -- 1: Relative path
+  --           -- 2: Absolute path
+  --           -- 3: Absolute path, with tilde as the home directory
+  --           -- 4: Filename and parent dir, with tilde as the home directory
+  --           path = 1,
+  --         },
+  --       },
+  --       lualine_x = { 'encoding', 'fileformat', 'filetype' },
+  --       lualine_y = { 'progress' },
+  --       lualine_z = { 'location' },
+  --     },
+  --     inactive_sections = {
+  --       lualine_a = {},
+  --       lualine_b = {},
+  --       lualine_c = { 'filename' },
+  --       lualine_x = { 'location' },
+  --       lualine_y = {},
+  --       lualine_z = {},
+  --     },
+  --     -- tabline = {
+  --     --   lualine_a = { 'buffers' },
+  --     --   lualine_b = { 'branch' },
+  --     --   lualine_c = { 'filename' },
+  --     --   lualine_x = {},
+  --     --   lualine_y = {},
+  --     --   lualine_z = { 'tabs' },
+  --     -- },
+  --     -- winbar = {
+  --     -- lualine_a = {
+  --     --   {
+  --     --     'filename',
+  --     --     file_status = true, -- displays file status (readonly, modified, etc)
+  --     --     path = 1,
+  --     --   },
+  --     -- },
+  --     -- lualine_b = {},
+  --     -- lualine_c = {},
+  --     --   lualine_x = {},
+  --     -- },
+  --     inactive_winbar = {},
+  --     extensions = {},
+  --   },
+  --   config = function(_, opts)
+  --     local trouble = require 'trouble'
+  --     local symbols = trouble.statusline {
+  --       mode = 'lsp_document_symbols',
+  --       groups = {},
+  --       title = false,
+  --       filter = { range = true },
+  --       format = '{kind_icon}{symbol.name:Normal}',
+  --       -- format = '{kind_icon}{symbol.name:red}',
+  --       -- The following line is needed to fix the background color
+  --       -- Set it to the lualine section you want to use
+  --       hl_group = 'lualine_b_normal',
+  --       -- hl_group = 'LineNr',
+  --     }
+  --     -- table.insert(opts.winbar.lualine_x, {
+  --     --   symbols.get,
+  --     --   cond = symbols.has,
+  --     -- })
+  --     require('lualine').setup(opts)
+  --   end,
+  -- },
+  --
+  -- {
+  --   'akinsho/bufferline.nvim',
+  --   version = '*',
+  --   dependencies = 'nvim-tree/nvim-web-devicons',
+  --   opts = {
+  --     options = {
+  --       mode = 'buffers', -- set to "tabs" to only show tabpages instead
+  --       -- style_preset = bufferline.style_preset.default, -- or bufferline.style_preset.minimal,
+  --       -- themable = true | false, -- allows highlight groups to be overriden i.e. sets highlights as default
+  --       numbers = 'buffer_id',
+  --       -- close_command = "bdelete! %d",       -- can be a string | function, | false see "Mouse actions"
+  --       -- right_mouse_command = "bdelete! %d", -- can be a string | function | false, see "Mouse actions"
+  --       -- left_mouse_command = "buffer %d",    -- can be a string | function, | false see "Mouse actions"
+  --       -- middle_mouse_command = nil,          -- can be a string | function, | false see "Mouse actions"
+  --       indicator = {
+  --         -- icon = '▎', -- this should be omitted if indicator style is not 'icon'
+  --         style = 'underline',
+  --       },
+  --       -- buffer_close_icon = '󰅖',
+  --       -- modified_icon = '● ',
+  --       -- close_icon = ' ',
+  --       -- left_trunc_marker = ' ',
+  --       -- right_trunc_marker = ' ',
+  --       -- --- name_formatter can be used to change the buffer's label in the bufferline.
+  --       -- --- Please note some names can/will break the
+  --       -- --- bufferline so use this at your discretion knowing that it has
+  --       -- --- some limitations that will *NOT* be fixed.
+  --       -- name_formatter = function(buf)  -- buf contains:
+  --       --       -- name                | str        | the basename of the active file
+  --       --       -- path                | str        | the full path of the active file
+  --       --       -- bufnr               | int        | the number of the active buffer
+  --       --       -- buffers (tabs only) | table(int) | the numbers of the buffers in the tab
+  --       --       -- tabnr (tabs only)   | int        | the "handle" of the tab, can be converted to its ordinal number using: `vim.api.nvim_tabpage_get_number(buf.tabnr)`
+  --       -- end,
+  --       -- max_name_length = 18,
+  --       -- max_prefix_length = 15, -- prefix used when a buffer is de-duplicated
+  --       -- truncate_names = true, -- whether or not tab names should be truncated
+  --       -- tab_size = 18,
+  --       diagnostics = 'nvim_lsp',
+  --       -- diagnostics_update_in_insert = false, -- only applies to coc
+  --       diagnostics_update_on_event = true, -- use nvim's diagnostic handler
+  --       -- -- The diagnostics indicator can be set to nil to keep the buffer name highlight but delete the highlighting
+  --       diagnostics_indicator = function(count, level, diagnostics_dict, context)
+  --         local s = ' '
+  --         for e, n in pairs(diagnostics_dict) do
+  --           local sym = e == 'error' and ' ' or (e == 'warning' and ' ' or ' ')
+  --           s = s .. n .. sym
+  --         end
+  --         return s
+  --       end,
+  --       -- -- NOTE this will be called a lot so don't do any heavy processing here
+  --       -- custom_filter = function(buf_number, buf_numbers)
+  --       --     -- filter out filetypes you don't want to see
+  --       --     if vim.bo[buf_number].filetype ~= "<i-dont-want-to-see-this>" then
+  --       --         return true
+  --       --     end
+  --       --     -- filter out by buffer name
+  --       --     if vim.fn.bufname(buf_number) ~= "<buffer-name-I-dont-want>" then
+  --       --         return true
+  --       --     end
+  --       --     -- filter out based on arbitrary rules
+  --       --     -- e.g. filter out vim wiki buffer from tabline in your work repo
+  --       --     if vim.fn.getcwd() == "<work-repo>" and vim.bo[buf_number].filetype ~= "wiki" then
+  --       --         return true
+  --       --     end
+  --       --     -- filter out by it's index number in list (don't show first buffer)
+  --       --     if buf_numbers[1] ~= buf_number then
+  --       --         return true
+  --       --     end
+  --       -- end,
+  --       -- offsets = {
+  --       --     {
+  --       --         filetype = "NvimTree",
+  --       --         text = "File Explorer" | function ,
+  --       --         text_align = "left" | "center" | "right"
+  --       --         separator = true
+  --       --     }
+  --       -- },
+  --       -- color_icons = true | false, -- whether or not to add the filetype icon highlights
+  --       -- get_element_icon = function(element)
+  --       --   -- element consists of {filetype: string, path: string, extension: string, directory: string}
+  --       --   -- This can be used to change how bufferline fetches the icon
+  --       --   -- for an element e.g. a buffer or a tab.
+  --       --   -- e.g.
+  --       --   local icon, hl = require('nvim-web-devicons').get_icon_by_filetype(element.filetype, { default = false })
+  --       --   return icon, hl
+  --       --   -- or
+  --       --   local custom_map = {my_thing_ft: {icon = "my_thing_icon", hl}}
+  --       --   return custom_map[element.filetype]
+  --       -- end,
+  --       -- show_buffer_icons = true | false, -- disable filetype icons for buffers
+  --       -- show_buffer_close_icons = true | false,
+  --       show_close_icon = false,
+  --       -- show_tab_indicators = true | false,
+  --       -- show_duplicate_prefix = true | false, -- whether to show duplicate buffer prefix
+  --       -- duplicates_across_groups = true, -- whether to consider duplicate paths in different groups as duplicates
+  --       -- persist_buffer_sort = true, -- whether or not custom sorted buffers should persist
+  --       -- move_wraps_at_ends = false, -- whether or not the move command "wraps" at the first or last position
+  --       -- -- can also be a table containing 2 custom separators
+  --       -- -- [focused and unfocused]. eg: { '|', '|' }
+  --       separator_style = 'slant',
+  --       -- enforce_regular_tabs = false | true,
+  --       -- always_show_bufferline = true | false,
+  --       -- auto_toggle_bufferline = true | false,
+  --       -- hover = {
+  --       --   enabled = true,
+  --       --   delay = 200,
+  --       --   reveal = { 'close' },
+  --       -- },
+  --       -- sort_by = 'insert_after_current' |'insert_at_end' | 'id' | 'extension' | 'relative_directory' | 'directory' | 'tabs' | function(buffer_a, buffer_b)
+  --       --     -- add custom logic
+  --       --     local modified_a = vim.fn.getftime(buffer_a.path)
+  --       --     local modified_b = vim.fn.getftime(buffer_b.path)
+  --       --     return modified_a > modified_b
+  --       -- end
+  --     },
+  --   },
+  -- },
 
-            -- path:
-            -- 0: Just the filename
-            -- 1: Relative path
-            -- 2: Absolute path
-            -- 3: Absolute path, with tilde as the home directory
-            -- 4: Filename and parent dir, with tilde as the home directory
-            path = 1,
-          },
-        },
-        lualine_x = { 'encoding', 'fileformat', 'filetype' },
-        lualine_y = { 'progress' },
-        lualine_z = { 'location' },
-      },
-      inactive_sections = {
-        lualine_a = {},
-        lualine_b = {},
-        lualine_c = { 'filename' },
-        lualine_x = { 'location' },
-        lualine_y = {},
-        lualine_z = {},
-      },
-      -- tabline = {
-      --   lualine_a = { 'buffers' },
-      --   lualine_b = { 'branch' },
-      --   lualine_c = { 'filename' },
-      --   lualine_x = {},
-      --   lualine_y = {},
-      --   lualine_z = { 'tabs' },
-      -- },
-      -- winbar = {
-      -- lualine_a = {
-      --   {
-      --     'filename',
-      --     file_status = true, -- displays file status (readonly, modified, etc)
-      --     path = 1,
-      --   },
-      -- },
-      -- lualine_b = {},
-      -- lualine_c = {},
-      --   lualine_x = {},
-      -- },
-      inactive_winbar = {},
-      extensions = {},
-    },
-    config = function(_, opts)
-      local trouble = require 'trouble'
-      local symbols = trouble.statusline {
-        mode = 'lsp_document_symbols',
-        groups = {},
-        title = false,
-        filter = { range = true },
-        format = '{kind_icon}{symbol.name:Normal}',
-        -- format = '{kind_icon}{symbol.name:red}',
-        -- The following line is needed to fix the background color
-        -- Set it to the lualine section you want to use
-        hl_group = 'lualine_b_normal',
-        -- hl_group = 'LineNr',
-      }
-      -- table.insert(opts.winbar.lualine_x, {
-      --   symbols.get,
-      --   cond = symbols.has,
-      -- })
-      require('lualine').setup(opts)
-    end,
-  },
-
-  {
-    'akinsho/bufferline.nvim',
-    version = '*',
-    dependencies = 'nvim-tree/nvim-web-devicons',
-    opts = {
-      options = {
-        mode = 'buffers', -- set to "tabs" to only show tabpages instead
-        -- style_preset = bufferline.style_preset.default, -- or bufferline.style_preset.minimal,
-        -- themable = true | false, -- allows highlight groups to be overriden i.e. sets highlights as default
-        numbers = 'buffer_id',
-        -- close_command = "bdelete! %d",       -- can be a string | function, | false see "Mouse actions"
-        -- right_mouse_command = "bdelete! %d", -- can be a string | function | false, see "Mouse actions"
-        -- left_mouse_command = "buffer %d",    -- can be a string | function, | false see "Mouse actions"
-        -- middle_mouse_command = nil,          -- can be a string | function, | false see "Mouse actions"
-        indicator = {
-          -- icon = '▎', -- this should be omitted if indicator style is not 'icon'
-          style = 'underline',
-        },
-        -- buffer_close_icon = '󰅖',
-        -- modified_icon = '● ',
-        -- close_icon = ' ',
-        -- left_trunc_marker = ' ',
-        -- right_trunc_marker = ' ',
-        -- --- name_formatter can be used to change the buffer's label in the bufferline.
-        -- --- Please note some names can/will break the
-        -- --- bufferline so use this at your discretion knowing that it has
-        -- --- some limitations that will *NOT* be fixed.
-        -- name_formatter = function(buf)  -- buf contains:
-        --       -- name                | str        | the basename of the active file
-        --       -- path                | str        | the full path of the active file
-        --       -- bufnr               | int        | the number of the active buffer
-        --       -- buffers (tabs only) | table(int) | the numbers of the buffers in the tab
-        --       -- tabnr (tabs only)   | int        | the "handle" of the tab, can be converted to its ordinal number using: `vim.api.nvim_tabpage_get_number(buf.tabnr)`
-        -- end,
-        -- max_name_length = 18,
-        -- max_prefix_length = 15, -- prefix used when a buffer is de-duplicated
-        -- truncate_names = true, -- whether or not tab names should be truncated
-        -- tab_size = 18,
-        diagnostics = 'nvim_lsp',
-        -- diagnostics_update_in_insert = false, -- only applies to coc
-        diagnostics_update_on_event = true, -- use nvim's diagnostic handler
-        -- -- The diagnostics indicator can be set to nil to keep the buffer name highlight but delete the highlighting
-        diagnostics_indicator = function(count, level, diagnostics_dict, context)
-          local s = ' '
-          for e, n in pairs(diagnostics_dict) do
-            local sym = e == 'error' and ' ' or (e == 'warning' and ' ' or ' ')
-            s = s .. n .. sym
-          end
-          return s
-        end,
-        -- -- NOTE this will be called a lot so don't do any heavy processing here
-        -- custom_filter = function(buf_number, buf_numbers)
-        --     -- filter out filetypes you don't want to see
-        --     if vim.bo[buf_number].filetype ~= "<i-dont-want-to-see-this>" then
-        --         return true
-        --     end
-        --     -- filter out by buffer name
-        --     if vim.fn.bufname(buf_number) ~= "<buffer-name-I-dont-want>" then
-        --         return true
-        --     end
-        --     -- filter out based on arbitrary rules
-        --     -- e.g. filter out vim wiki buffer from tabline in your work repo
-        --     if vim.fn.getcwd() == "<work-repo>" and vim.bo[buf_number].filetype ~= "wiki" then
-        --         return true
-        --     end
-        --     -- filter out by it's index number in list (don't show first buffer)
-        --     if buf_numbers[1] ~= buf_number then
-        --         return true
-        --     end
-        -- end,
-        -- offsets = {
-        --     {
-        --         filetype = "NvimTree",
-        --         text = "File Explorer" | function ,
-        --         text_align = "left" | "center" | "right"
-        --         separator = true
-        --     }
-        -- },
-        -- color_icons = true | false, -- whether or not to add the filetype icon highlights
-        -- get_element_icon = function(element)
-        --   -- element consists of {filetype: string, path: string, extension: string, directory: string}
-        --   -- This can be used to change how bufferline fetches the icon
-        --   -- for an element e.g. a buffer or a tab.
-        --   -- e.g.
-        --   local icon, hl = require('nvim-web-devicons').get_icon_by_filetype(element.filetype, { default = false })
-        --   return icon, hl
-        --   -- or
-        --   local custom_map = {my_thing_ft: {icon = "my_thing_icon", hl}}
-        --   return custom_map[element.filetype]
-        -- end,
-        -- show_buffer_icons = true | false, -- disable filetype icons for buffers
-        -- show_buffer_close_icons = true | false,
-        show_close_icon = false,
-        -- show_tab_indicators = true | false,
-        -- show_duplicate_prefix = true | false, -- whether to show duplicate buffer prefix
-        -- duplicates_across_groups = true, -- whether to consider duplicate paths in different groups as duplicates
-        -- persist_buffer_sort = true, -- whether or not custom sorted buffers should persist
-        -- move_wraps_at_ends = false, -- whether or not the move command "wraps" at the first or last position
-        -- -- can also be a table containing 2 custom separators
-        -- -- [focused and unfocused]. eg: { '|', '|' }
-        separator_style = 'slant',
-        -- enforce_regular_tabs = false | true,
-        -- always_show_bufferline = true | false,
-        -- auto_toggle_bufferline = true | false,
-        -- hover = {
-        --   enabled = true,
-        --   delay = 200,
-        --   reveal = { 'close' },
-        -- },
-        -- sort_by = 'insert_after_current' |'insert_at_end' | 'id' | 'extension' | 'relative_directory' | 'directory' | 'tabs' | function(buffer_a, buffer_b)
-        --     -- add custom logic
-        --     local modified_a = vim.fn.getftime(buffer_a.path)
-        --     local modified_b = vim.fn.getftime(buffer_b.path)
-        --     return modified_a > modified_b
-        -- end
-      },
-    },
-  },
-
-  { -- Collection of various small independent plugins/modules
-    'echasnovski/mini.nvim',
-    config = function()
-      -- Better Around/Inside textobjects
-      --
-      -- Examples:
-      --  - va)  - [V]isually select [A]round [)]paren
-      --  - yinq - [Y]ank [I]nside [N]ext [Q]uote
-      --  - ci'  - [C]hange [I]nside [']quote
-      -- require('mini.ai').setup { n_lines = 500 }
-
-      -- Add/delete/replace surroundings (brackets, quotes, etc.)
-      --
-      -- - saiw) - [S]urround [A]dd [I]nner [W]ord [)]Paren
-      -- - sd'   - [S]urround [D]elete [']quotes
-      -- - sr)'  - [S]urround [R]eplace [)] [']
-      require('mini.surround').setup()
-
-      -- Simple and easy statusline.
-      --  You could remove this setup call if you don't like it,
-      --  and try some other statusline plugin
-      -- local statusline = require 'mini.statusline'
-      -- set use_icons to true if you have a Nerd Font
-      -- statusline.setup { use_icons = vim.g.have_nerd_font }
-
-      -- You can configure sections in the statusline by overriding their
-      -- default behavior. For example, here we set the section for
-      -- cursor location to LINE:COLUMN
-      -- ---@diagnostic disable-next-line: duplicate-set-field
-      -- statusline.section_location = function()
-      --   return '%2l:%-2v'
-      -- end
-
-      -- ... and there is more!
-      --  Check out: https://github.com/echasnovski/mini.nvim
-    end,
-  },
+  -- { -- Collection of various small independent plugins/modules
+  --   'echasnovski/mini.nvim',
+  --   config = function()
+  --     -- Better Around/Inside textobjects
+  --     --
+  --     -- Examples:
+  --     --  - va)  - [V]isually select [A]round [)]paren
+  --     --  - yinq - [Y]ank [I]nside [N]ext [Q]uote
+  --     --  - ci'  - [C]hange [I]nside [']quote
+  --     -- require('mini.ai').setup { n_lines = 500 }
+  --
+  --     -- Add/delete/replace surroundings (brackets, quotes, etc.)
+  --     --
+  --     -- - saiw) - [S]urround [A]dd [I]nner [W]ord [)]Paren
+  --     -- - sd'   - [S]urround [D]elete [']quotes
+  --     -- - sr)'  - [S]urround [R]eplace [)] [']
+  --     require('mini.surround').setup()
+  --
+  --     -- Simple and easy statusline.
+  --     --  You could remove this setup call if you don't like it,
+  --     --  and try some other statusline plugin
+  --     -- local statusline = require 'mini.statusline'
+  --     -- set use_icons to true if you have a Nerd Font
+  --     -- statusline.setup { use_icons = vim.g.have_nerd_font }
+  --
+  --     -- You can configure sections in the statusline by overriding their
+  --     -- default behavior. For example, here we set the section for
+  --     -- cursor location to LINE:COLUMN
+  --     -- ---@diagnostic disable-next-line: duplicate-set-field
+  --     -- statusline.section_location = function()
+  --     --   return '%2l:%-2v'
+  --     -- end
+  --
+  --     -- ... and there is more!
+  --     --  Check out: https://github.com/echasnovski/mini.nvim
+  --   end,
+  -- },
 
   { -- Highlight, edit, and navigate code
-    'nvim-jreesitter/nvim-treesitter',
+    'nvim-treesitter/nvim-treesitter',
     build = ':TSUpdate',
     main = 'nvim-treesitter.configs', -- Sets main module to use for opts
     dependencies = {
@@ -2145,11 +2272,12 @@ require('lazy').setup({
   --  Uncomment any of the lines below to enable them (you will need to restart nvim).
   --
   -- require 'kickstart.plugins.debug',
-  require 'kickstart.plugins.indent_line',
   -- require 'kickstart.plugins.lint',
-  require 'kickstart.plugins.autopairs',
   -- require 'kickstart.plugins.neo-tree', -- Use yatzi instead.
-  require 'kickstart.plugins.gitsigns', -- Adds gitsigns recommend keymaps.
+  -- require 'kickstart.plugins.gitsigns', -- Adds gitsigns recommend keymaps.
+
+  -- require 'kickstart.plugins.indent_line',
+  -- require 'kickstart.plugins.autopairs',
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
