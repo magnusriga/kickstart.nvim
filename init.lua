@@ -300,7 +300,6 @@ vim.api.nvim_create_autocmd('TextYankPost', {
 vim.filetype.add {
   filename = {
     ['.shrc'] = 'sh',
-    -- [ '.zshrc' ] = 'zsh'
   },
 }
 
@@ -371,6 +370,10 @@ local lsp_formatting = function(bufnr)
     filter = null_ls_filter,
   }
 end
+
+-- Cannot have clear = true, because attaching to new buffer, i.e. opening new
+local augroup_lsp_format = vim.api.nvim_create_augroup('lsp-format', { clear = false })
+-- file, will cause the autocommand for a previously opened buffer to be deleted.
 
 -- ============================================================================================
 -- Lazy Plugins
@@ -702,37 +705,6 @@ require('lazy').setup({
       }
     end,
   },
-  -- {
-  --   'pmizio/typescript-tools.nvim',
-  --   dependencies = { 'nvim-lua/plenary.nvim', 'neovim/nvim-lspconfig', 'hrsh7th/cmp-nvim-lsp' },
-  --   -- opts = {
-  --   --   -- opt table is passed into require('typescript-tools').setup(opt), which in turn is passed into require(lspconfig).setup(opt).
-  --   --   -- Thus, we can add server capabilities here.
-  --   --   -- capabilities = vim.tbl_deep_extend('force', vim.lsp.protocol.make_client_capabilities(), require('cmp_nvim_lsp').default_capabilities()),
-  --   -- },
-  --   config = function()
-  --     -- opt table is passed into require('typescript-tools').setup(opt), but here we call it directly.
-  --     -- Parameters passed to setup funciton are also passed to standard nvim-lspconfig
-  --     -- server setup.
-  --     local capabilities = vim.lsp.protocol.make_client_capabilities()
-  --     capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
-  --     require('typescript-tools').setup {
-  --       capabilities = capabilities,
-  --
-  --       on_attach = function(client)
-  --         client.server_capabilities.documentFormattingProvider = false
-  --         client.server_capabilities.documentRangeFormattingProvider = false
-  --       end,
-  --
-  --       settings = {
-  --         jsx_close_tag = {
-  --           enable = true,
-  --           filetypes = { 'javascriptreact', 'typescriptreact' },
-  --         },
-  --       },
-  --     }
-  --   end,
-  -- },
 
   {
     'nvimtools/none-ls.nvim',
@@ -757,14 +729,8 @@ require('lazy').setup({
             },
           },
           null_ls.builtins.formatting.prettierd,
-          -- null_ls.builtins.formatting.prettierd.with {
-          --   env = {
-          --     --TODO: Check if this is needed.
-          --     PRETTIERD_DEFAULT_CONFIG = vim.fn.expand '~/nfront/.prettierrc.js',
-          --   },
-          -- },
-          -- null_ls.builtins.formatting.prettierd,
-          -- require 'none-ls.formatting.prettier_d',
+          -- null_ls and prettierd finds prettier config automatically,
+          -- using root_dir, no need to specify PRETTIERD_DEFAULT_CONFIG here.
         },
       }
     end,
@@ -784,7 +750,7 @@ require('lazy').setup({
       { 'j-hui/fidget.nvim', opts = {} },
 
       -- Allows extra capabilities provided by nvim-cmp
-      -- 'hrsh7th/cmp-nvim-lsp',
+      'hrsh7th/cmp-nvim-lsp',
     },
     config = function()
       -- Brief aside: **What is LSP?**
@@ -831,11 +797,11 @@ require('lazy').setup({
 
           -- Return true if null-ls has an active source set with formatting,
           -- for the current buffer's filetype, otherwise return false.
-          local function is_null_ls_formatting_enabled(bufnr)
-            local file_type = vim.api.nvim_buf_get_option(bufnr, 'filetype')
-            local generators = require('null-ls.generators').get_available(file_type, require('null-ls.methods').internal.FORMATTING)
-            return #generators > 0
-          end
+          -- local function is_null_ls_formatting_enabled(bufnr)
+          --   local file_type = vim.api.nvim_buf_get_option(bufnr, 'filetype')
+          --   local generators = require('null-ls.generators').get_available(file_type, require('null-ls.methods').internal.FORMATTING)
+          --   return #generators > 0
+          -- end
 
           -- If null-ls attaches to buffer, but does NOT have a formatting method,
           -- then option `formatexpr` should not be set, to avoid breaking gq in those
@@ -853,12 +819,14 @@ require('lazy').setup({
 
           -- Format the current buffer on save, not using typescript-tools,
           -- meaning null_ls is used if the file is applicable.
-          -- Also, only create the formatting ability when client is null-ls, to avoid
-          -- multiple redundant autocommands, i.e. one for each attached LSP, we only need one.
-          if client_by_id.supports_method 'textDocument/formatting' and client_by_id.name == 'null-ls' and is_null_ls_formatting_enabled(buffer_number) then
-            -- Cannot have clear = true, because attaching to new buffer, i.e. opening new
-            -- file, will cause the autocommand for a previously opened buffer to be deleted.
-            local augroup_lsp_format = vim.api.nvim_create_augroup('lsp-format', { clear = false })
+          -- If another LSP attaches to same buffer, delete existing format-on-save autocommand
+          -- to ensure only one of these autocommands are used per buffer.
+          -- It does not matter which LSP registers the autocommand on the buffer.
+          if client_by_id.supports_method 'textDocument/formatting' then
+            vim.api.nvim_clear_autocmds {
+              group = augroup_lsp_format,
+              buffer = buffer_number,
+            }
             vim.api.nvim_create_autocmd('BufWritePre', {
               group = augroup_lsp_format,
               buffer = buffer_number,
@@ -868,13 +836,15 @@ require('lazy').setup({
               end,
             })
 
-            -- Remove the format-on-save autocommand, when any LSP detaches from buffer.
+            -- Remove format-on-save autocommand for buffer,
+            -- when LSP detaches from that buffer.
+            -- Only need one global version of this,
+            -- as `nvim_clear_autocmds` operate on specific buffer.
             vim.api.nvim_create_autocmd('LspDetach', {
               group = vim.api.nvim_create_augroup('lsp-detach', { clear = true }),
               callback = function(event2)
                 vim.api.nvim_clear_autocmds {
-                  -- event = 'BufWritePre',
-                  group = 'lsp-format',
+                  group = augroup_lsp_format,
                   buffer = event2.buf,
                 }
               end,
@@ -949,6 +919,7 @@ require('lazy').setup({
           -- Execute a code action, usually your cursor needs to be on top of an error
           -- or a suggestion from your LSP for this to activate.
           map('<leader>ca', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x' })
+          map('<C-.>', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x', 'i' })
 
           -- Declaration is normally not used, prefer Definition.
           -- map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
@@ -998,8 +969,8 @@ require('lazy').setup({
       -- When you add nvim-cmp, luasnip, etc. Neovim now has *more* capabilities.
       -- So, we create new capabilities with nvim cmp, and then broadcast that to the servers.
 
-      -- local capabilities = vim.lsp.protocol.make_client_capabilities()
-      -- capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
+      local capabilities = vim.lsp.protocol.make_client_capabilities()
+      capabilities = vim.tbl_deep_extend('force', capabilities, require('cmp_nvim_lsp').default_capabilities())
 
       -- Enable the following language servers
       --  Feel free to add/remove any LSPs that you want here. They will automatically be installed.
@@ -1162,7 +1133,7 @@ require('lazy').setup({
             -- This handles overriding only values explicitly passed
             -- by the server configuration above. Useful when disabling
             -- certain features of an LSP (for example, turning off formatting for ts_ls)
-            -- server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
+            server.capabilities = vim.tbl_deep_extend('force', {}, capabilities, server.capabilities or {})
 
             require('lspconfig')[server_name].setup(server)
           end,
@@ -1242,99 +1213,104 @@ require('lazy').setup({
     event = 'InsertEnter',
     dependencies = {
       -- Snippet Engine & its associated nvim-cmp source
-      --     {
-      --       'L3MON4D3/LuaSnip',
-      --       build = (function()
-      --         -- Build Step is needed for regex support in snippets.
-      --         -- This step is not supported in many windows environments.
-      --         -- Remove the below condition to re-enable on windows.
-      --         if vim.fn.has 'win32' == 1 or vim.fn.executable 'make' == 0 then
-      --           return
-      --         end
-      --         return 'make install_jsregexp'
-      --       end)(),
-      --       dependencies = {
-      --         -- `friendly-snippets` contains a variety of premade snippets.
-      --         --    See the README about individual language/framework/plugin snippets:
-      --         --    https://github.com/rafamadriz/friendly-snippets
-      --         -- {
-      --         --   'rafamadriz/friendly-snippets',
-      --         --   config = function()
-      --         --     require('luasnip.loaders.from_vscode').lazy_load()
-      --         --   end,
-      --         -- },
-      --       },
-      --     },
-      --     'saadparwaiz1/cmp_luasnip',
-      --
-      --     -- Adds other completion capabilities.
-      --     --  nvim-cmp does not ship with all sources by default. They are split
-      --     --  into multiple repos for maintenance purposes.
+      {
+        'L3MON4D3/LuaSnip',
+        build = (function()
+          -- Build Step is needed for regex support in snippets.
+          -- This step is not supported in many windows environments.
+          -- Remove the below condition to re-enable on windows.
+          if vim.fn.has 'win32' == 1 or vim.fn.executable 'make' == 0 then
+            return
+          end
+          return 'make install_jsregexp'
+        end)(),
+        dependencies = {
+          -- `friendly-snippets` contains a variety of premade snippets.
+          -- See the README about individual language/framework/plugin snippets:
+          -- https://github.com/rafamadriz/friendly-snippets
+          {
+            'rafamadriz/friendly-snippets',
+            config = function()
+              require('luasnip').filetype_extend('typescript', { 'javascript', 'tsdoc' })
+              require('luasnip').filetype_extend('typescriptreact', { 'javascript', 'tsdoc' })
+              require('luasnip').filetype_extend('javascript', { 'jsdoc' })
+              require('luasnip').filetype_extend('javascriptreact', { 'javascript', 'jsdoc' })
+              require('luasnip.loaders.from_vscode').lazy_load()
+            end,
+          },
+        },
+      },
+      'saadparwaiz1/cmp_luasnip',
+
+      -- Autopairs.
+      {
+        'windwp/nvim-autopairs',
+        opts = {
+          map_bs = true, -- Map <BS> to delete a pair.
+          map_c_h = true, -- Map <C-h> to delete a pair.
+          map_c_w = true, -- Map <C-w> to delete a pair, if possible.
+        },
+      },
+
+      -- Adds other completion capabilities.
+      -- nvim-cmp does not ship with all sources by default. They are split
+      -- into multiple repos for maintenance purposes.
       'hrsh7th/cmp-nvim-lsp',
-      --     'hrsh7th/cmp-path',
-      --     'onsails/lspkind.nvim',
+      -- 'hrsh7th/cmp-path',
+      -- 'onsails/lspkind.nvim',
     },
     config = function()
-      --     -- See `:help cmp`
+      -- See: `:help cmp`.
       local cmp = require 'cmp'
-      --     local luasnip = require 'luasnip'
-      --     local lspkind = require 'lspkind'
-      --
-      --     luasnip.config.setup {}
-      --
+      local luasnip = require 'luasnip'
+      -- luasnip.config.setup {}
+      -- local lspkind = require 'lspkind'
+
+      -- Not needed when setting CR keymap in opts above.
+      -- local cmp_autopairs = require 'nvim-autopairs.completion.cmp'
+      -- cmp.event:on('confirm_done', cmp_autopairs.on_confirm_done())
+
       cmp.setup {
-        --       snippet = {
-        --         expand = function(args)
-        --           luasnip.lsp_expand(args.body)
-        --         end,
-        --       },
+        snippet = {
+          expand = function(args)
+            luasnip.lsp_expand(args.body)
+          end,
+        },
         --       completion = { completeopt = 'menu,menuone,noinsert' },
-        --       -- formatting = {
-        --       --   fields = { cmp.ItemField.Abbr, cmp.ItemField.Menu },
-        --       --   expandable_indicator = true,
-        --       --   format = lspkind.cmp_format {
-        --       --     mode = 'symbol', -- show only symbol annotations
-        --       --     maxwidth = {
-        --       --       -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
-        --       --       -- can also be a function to dynamically calculate max width such as
-        --       --       -- menu = function() return math.floor(0.45 * vim.o.columns) end,
-        --       --       menu = 50, -- leading text (labelDetails)
-        --       --       abbr = 50, -- actual suggestion item
-        --       --     },
-        --       --   },
-        --       -- },
-        --       --
+        --         formatting = {
+        --           fields = { cmp.ItemField.Abbr, cmp.ItemField.Menu },
+        --           expandable_indicator = true,
+        --           format = lspkind.cmp_format {
+        --             mode = 'symbol', -- show only symbol annotations
+        --             maxwidth = {
+        --               -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
+        --               -- can also be a function to dynamically calculate max width such as
+        --               -- menu = function() return math.floor(0.45 * vim.o.columns) end,
+        --               menu = 50, -- leading text (labelDetails)
+        --               abbr = 50, -- actual suggestion item
+        --             },
         --
-        --       formatting = {
-        --         format = lspkind.cmp_format {
-        --           mode = 'symbol', -- show only symbol annotations
-        --           maxwidth = {
-        --             -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
-        --             -- can also be a function to dynamically calculate max width such as
-        --             -- menu = function() return math.floor(0.45 * vim.o.columns) end,
-        --             menu = 50, -- leading text (labelDetails)
-        --             abbr = 50, -- actual suggestion item
-        --           },
-        --           ellipsis_char = '...', -- when popup menu exceed maxwidth, the truncated part would show ellipsis_char instead (must define maxwidth first)
-        --           show_labelDetails = true, -- show labelDetails in menu. Disabled by default
+        --            ellipsis_char = '...', -- when popup menu exceed maxwidth, the truncated part would show ellipsis_char instead (must define maxwidth first)
+        --            show_labelDetails = true, -- show labelDetails in menu. Disabled by default
         --
-        --           -- The function below will be called before any actual modifications from lspkind
-        --           -- so that you can provide more controls on popup customization. (See [#30](https://github.com/onsails/lspkind-nvim/pull/30))
-        --           -- before = function (entry, vim_item)
-        --           --   ...
-        --           --   return vim_item
-        --           -- end
-        --         },
-        --       },
-        --       -- For an understanding of why these mappings were
-        --       -- chosen, you will need to read `:help ins-completion`
-        --
-        -- No, but seriously. Please read `:help ins-completion`, it is really good!
+        --            -- The function below will be called before any actual modifications from lspkind
+        --            -- so that you can provide more controls on popup customization. (See [#30](https://github.com/onsails/lspkind-nvim/pull/30))
+        --            -- before = function (entry, vim_item)
+        --            --   ...
+        --            --   return vim_item
+        --            -- end
+        --          },
+        --        },
+
+        -- Keymaps matching Neovim native.
+        -- See: `:help ins-completion`.
         mapping = cmp.mapping.preset.insert {
-          -- Select the [n]ext item
+          -- Select [n]ext item
           ['<C-n>'] = cmp.mapping.select_next_item(),
-          -- Select the [p]revious item
+          -- Select [p]revious item
           ['<C-p>'] = cmp.mapping.select_prev_item(),
+          -- Abort completion.
+          ['<C-e>'] = cmp.mapping.abort(),
 
           -- Scroll the documentation window [b]ack / [f]orward
           ['<C-b>'] = cmp.mapping.scroll_docs(-4),
@@ -1352,8 +1328,8 @@ require('lazy').setup({
           --['<S-Tab>'] = cmp.mapping.select_prev_item(),
 
           -- Manually trigger a completion from nvim-cmp.
-          --  Generally you don't need this, because nvim-cmp will display
-          --  completions whenever it has completion options available.
+          -- Generally you don't need this, because nvim-cmp will display
+          -- completions whenever it has completion options available.
           ['<C-Space>'] = cmp.mapping.complete {},
 
           -- Think of <c-l> as moving to the right of your snippet expansion.
@@ -1364,29 +1340,32 @@ require('lazy').setup({
           --
           -- <c-l> will move you to the right of each of the expansion locations.
           -- <c-h> is similar, except moving you backwards.
-          -- ['<C-l>'] = cmp.mapping(function()
-          --   if luasnip.expand_or_locally_jumpable() then
-          --     luasnip.expand_or_jump()
-          --   end
-          -- end, { 'i', 's' }),
-          -- ['<C-h>'] = cmp.mapping(function()
-          --   if luasnip.locally_jumpable(-1) then
-          --     luasnip.jump(-1)
-          --   end
-          -- end, { 'i', 's' }),
+          ['<C-l>'] = cmp.mapping(function()
+            if luasnip.expand_or_locally_jumpable() then
+              luasnip.expand_or_jump()
+            end
+          end, { 'i', 's' }),
+          -- Going back should be <C-h> to fully match Vim movement,
+          -- but that would block native backspace with <C-h>,
+          -- so assign snippet-back-jump to <C-j> instead.
+          ['<C-j>'] = cmp.mapping(function()
+            if luasnip.locally_jumpable(-1) then
+              luasnip.jump(-1)
+            end
+          end, { 's' }),
 
-          -- For more advanced Luasnip keymaps (e.g. selecting choice nodes, expansion) see:
-          --    https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
+          -- Additional bindings to select choice node, and more:
+          -- https://github.com/L3MON4D3/LuaSnip?tab=readme-ov-file#keymaps
         },
         sources = {
-          --         {
-          --           name = 'lazydev',
-          --           -- set group index to 0 to skip loading LuaLS completions as lazydev recommends it
-          --           group_index = 0,
-          --         },
+          {
+            name = 'lazydev',
+            -- set group index to 0 to skip loading LuaLS completions as lazydev recommends it
+            group_index = 0,
+          },
           { name = 'nvim_lsp' },
-          --         { name = 'luasnip' },
-          --         { name = 'path' },
+          { name = 'luasnip' },
+          -- { name = 'path' },
         },
       }
     end,
@@ -1446,8 +1425,7 @@ require('lazy').setup({
       vim.cmd [[ highlight DiagnosticUnderlineWarn cterm=undercurl gui=undercurl guifg=NONE guisp=yellow ]]
       vim.cmd [[ highlight DiagnosticUnderlineInfo cterm=undercurl gui=undercurl guifg=NONE guisp=LightBlue ]]
       vim.cmd [[ highlight DiagnosticUnderlineHint cterm=undercurl gui=undercurl guifg=NONE guisp=#2bbac5 ]]
-      -- DiagnosticUnnecessary is used for unused variables, but links to highlightgroup
-      -- Comment, by default.
+      -- DiagnosticUnnecessary is used for unused variables, but links to highlightgroup Comment, by default.
       vim.cmd [[ highlight DiagnosticUnnecessary guifg=#495162 ]]
     end,
   },
@@ -2113,7 +2091,7 @@ require('lazy').setup({
         -- trim_scope = 'outer',
       }
 
-      -- Jump to context (upwards only)
+      -- Jump to context (upwards only).
       -- Use [z instead.
       -- vim.keymap.set('n', '[c', function()
       --   require('treesitter-context').go_to_context(vim.v.count1)
@@ -2275,9 +2253,7 @@ require('lazy').setup({
   -- require 'kickstart.plugins.lint',
   -- require 'kickstart.plugins.neo-tree', -- Use yatzi instead.
   -- require 'kickstart.plugins.gitsigns', -- Adds gitsigns recommend keymaps.
-
   -- require 'kickstart.plugins.indent_line',
-  -- require 'kickstart.plugins.autopairs',
 
   -- NOTE: The import below can automatically add your own plugins, configuration, etc from `lua/custom/plugins/*.lua`
   --    This is the easiest way to modularize your config.
