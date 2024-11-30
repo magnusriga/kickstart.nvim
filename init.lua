@@ -372,8 +372,22 @@ local lsp_formatting = function(bufnr)
 end
 
 -- Cannot have clear = true, because attaching to new buffer, i.e. opening new
-local augroup_lsp_format = vim.api.nvim_create_augroup('lsp-format', { clear = false })
 -- file, will cause the autocommand for a previously opened buffer to be deleted.
+local augroup_lsp_format = vim.api.nvim_create_augroup('lsp-format', { clear = false })
+
+-- Helper function that allows applying code action fix,
+-- if there is only one code action with the specified title.
+local apply_code_action_fix = function()
+  vim.lsp.buf.code_action {
+    filter = function(code_action)
+      if vim.startswith(code_action.title, 'Apply suggested fix') then
+        return true
+      end
+      return false
+    end,
+    apply = true,
+  }
+end
 
 -- ============================================================================================
 -- Lazy Plugins
@@ -919,7 +933,8 @@ require('lazy').setup({
           -- Execute a code action, usually your cursor needs to be on top of an error
           -- or a suggestion from your LSP for this to activate.
           map('<leader>ca', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x' })
-          map('<C-.>', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x', 'i' })
+          map('<leader>.', vim.lsp.buf.code_action, '[C]ode [A]ction', { 'n', 'x' })
+          map('<leader>cf', apply_code_action_fix, '[C]ode [A]ction Apply [F]ix.', { 'n', 'x' })
 
           -- Declaration is normally not used, prefer Definition.
           -- map('gD', vim.lsp.buf.declaration, '[G]oto [D]eclaration')
@@ -1276,31 +1291,32 @@ require('lazy').setup({
             luasnip.lsp_expand(args.body)
           end,
         },
-        --       completion = { completeopt = 'menu,menuone,noinsert' },
-        --         formatting = {
-        --           fields = { cmp.ItemField.Abbr, cmp.ItemField.Menu },
-        --           expandable_indicator = true,
-        --           format = lspkind.cmp_format {
-        --             mode = 'symbol', -- show only symbol annotations
-        --             maxwidth = {
-        --               -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
-        --               -- can also be a function to dynamically calculate max width such as
-        --               -- menu = function() return math.floor(0.45 * vim.o.columns) end,
-        --               menu = 50, -- leading text (labelDetails)
-        --               abbr = 50, -- actual suggestion item
-        --             },
+
+        -- completion = { completeopt = 'menu,menuone,noinsert' },
+        --   formatting = {
+        --     fields = { cmp.ItemField.Abbr, cmp.ItemField.Menu },
+        --     expandable_indicator = true,
+        --     format = lspkind.cmp_format {
+        --       mode = 'symbol', -- show only symbol annotations
+        --       maxwidth = {
+        --         -- prevent the popup from showing more than provided characters (e.g 50 will not show more than 50 characters)
+        --         -- can also be a function to dynamically calculate max width such as
+        --         -- menu = function() return math.floor(0.45 * vim.o.columns) end,
+        --         menu = 50, -- leading text (labelDetails)
+        --         abbr = 50, -- actual suggestion item
+        --       },
         --
-        --            ellipsis_char = '...', -- when popup menu exceed maxwidth, the truncated part would show ellipsis_char instead (must define maxwidth first)
-        --            show_labelDetails = true, -- show labelDetails in menu. Disabled by default
+        --      ellipsis_char = '...', -- when popup menu exceed maxwidth, the truncated part would show ellipsis_char instead (must define maxwidth first)
+        --      show_labelDetails = true, -- show labelDetails in menu. Disabled by default
         --
-        --            -- The function below will be called before any actual modifications from lspkind
-        --            -- so that you can provide more controls on popup customization. (See [#30](https://github.com/onsails/lspkind-nvim/pull/30))
-        --            -- before = function (entry, vim_item)
-        --            --   ...
-        --            --   return vim_item
-        --            -- end
-        --          },
-        --        },
+        --      -- The function below will be called before any actual modifications from lspkind
+        --      -- so that you can provide more controls on popup customization. (See [#30](https://github.com/onsails/lspkind-nvim/pull/30))
+        --      -- before = function (entry, vim_item)
+        --      --   ...
+        --      --   return vim_item
+        --      -- end
+        --    },
+        --  },
 
         -- Keymaps matching Neovim native.
         -- See: `:help ins-completion`.
@@ -1371,6 +1387,8 @@ require('lazy').setup({
     end,
   },
 
+  -- Using features built into Typescript Tools,
+  -- instead of nvim-ts-autotag.
   -- {
   --   'windwp/nvim-ts-autotag',
   --   opts = {
@@ -2046,10 +2064,10 @@ require('lazy').setup({
         swap = {
           enable = true,
           swap_next = {
-            ['<leader>a'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Swap next parameter' },
+            ['<leader>csa'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Swap next parameter' },
           },
           swap_previous = {
-            ['<leader>A'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Swap previous parameter' },
+            ['<leader>csA'] = { query = '@parameter.inner', query_group = 'textobjects', desc = 'Swap previous parameter' },
           },
         },
         lsp_interop = {
