@@ -586,6 +586,7 @@ require('lazy').setup({
             '--glob=!.history/*',
             '--glob=!.rustup/*',
             '--glob=!.cargo/*',
+            '--glob=!.next/*',
             -- '--glob=!.local/share/zsh/*',
             '--glob=!node_modules/*',
           },
@@ -602,7 +603,7 @@ require('lazy').setup({
             -- .gitignore files can be included with --no-ignore.
             hidden = true, -- Include hidden files, i.e. dotfiles.
             no_ignore = true, -- Include files/folders from: .gitignore, .ignore, etc.
-            exclude = { 'node_modules', '.git', '.cache', '.history', '.rustup', '.cargo' },
+            exclude = { 'node_modules', '.git', '.cache', '.history', '.rustup', '.cargo', '.next' },
             -- glob = { '!.git/*', '!.cache/*', '!.history/*', '!.rust*/*', '!.node_modules/*' },
           },
           -- lsp_document_symbols = {
